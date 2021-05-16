@@ -408,4 +408,4 @@ $ docker build -f docker/Dockerfile.dev -t smp:dev . && docker run --rm smp:dev 
 
 ### 🛡️ License <a name="license"></a>
 Project is distributed under [MIT License](https://github.com/qubvel/segmentation_models.pytorch/blob/master/LICENSE)
-"# smp-seg-pytorch" 
+
