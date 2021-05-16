@@ -48,15 +48,17 @@ def format_logs(logs):
 class SegModel(object):
     def __init__(self, cfg) -> None:
         super().__init__()
+        self.project_dir = Path(hydra.utils.get_original_cwd())
 
         self.cfg = cfg
         self.DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
         self.model = init_model(cfg)
+        self.model_url = str(self.project_dir / "outputs" / "best_model.pth")
+
         self.preprocessing_fn = \
             smp.encoders.get_preprocessing_fn(cfg.model.ENCODER, cfg.model.ENCODER_WEIGHTS)
 
-        self.project_dir = Path(hydra.utils.get_original_cwd())
 
         self.metrics = [smp.utils.metrics.IoU(threshold=0.5),
                         smp.utils.metrics.Fscore()]
@@ -131,9 +133,12 @@ class SegModel(object):
             # do something (save model, change lr, etc.)
             if valid_logs['iou_score'] > self.cfg.model.max_score:
                 max_score = valid_logs['iou_score']
-                # torch.save(self.model, self.model_url)
+                torch.save(self.model, self.model_url)
                 # torch.save(self.model.state_dict(), self.model_url)
                 print('Model saved!')
+
+            if epoch % 50 == 0:
+                self.optimizer.param_groups[0]['lr'] = 0.1 * self.optimizer.param_groups[0]['lr']
                         
         
     def train_one_epoch(self, epoch):
@@ -148,7 +153,7 @@ class SegModel(object):
 
             logs = self.step(phase) 
 
-            currlr = self.lr_scheduler.get_last_lr()[0] if self.cfg.model.use_lr_scheduler else self.cfg.model.learning_rate           
+            currlr = self.lr_scheduler.get_last_lr()[0] if self.cfg.model.use_lr_scheduler else self.optimizer.param_groups[0]['lr']          
             wandb.log({phase: logs, 'epoch': epoch, 'lr': currlr})
 
             temp = [logs["total_loss"]] + [logs[self.metrics[i].__name__] for i in range(0, len(self.metrics))]
