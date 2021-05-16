@@ -92,8 +92,8 @@ class SegModel(object):
             classes=self.cfg.data.CLASSES,
         )
 
-        train_loader = DataLoader(train_dataset, batch_size=self.cfg.batch_size, shuffle=True, num_workers=12)
-        valid_loader = DataLoader(valid_dataset, batch_size=1, shuffle=False, num_workers=4)
+        train_loader = DataLoader(train_dataset, batch_size=self.cfg.model.batch_size, shuffle=True, num_workers=12)
+        valid_loader = DataLoader(valid_dataset, batch_size=self.cfg.model.batch_size, shuffle=False, num_workers=4)
 
         dataloaders = { 'train': train_loader, \
                         'valid': valid_loader, \
