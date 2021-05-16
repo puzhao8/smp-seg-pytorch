@@ -15,8 +15,14 @@ model:
     ENCODER_WEIGHTS: imagenet
 
     max_epoch: 50
-    learning_rate: 1e-5
-    weight_decay: 1e-4
+    batch_size: 32
+    learning_rate: 0.1
+    weight_decay: 1e-3
+    
+
+    use_lr_scheduler: True
+    warmup_coef: 5
+    
 
     max_score: 0.1 # If IoU > max_score, start to save model
 

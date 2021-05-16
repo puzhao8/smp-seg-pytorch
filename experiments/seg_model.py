@@ -37,6 +37,8 @@ from dataset.augument import get_training_augmentation, \
 from torch.utils.data import DataLoader
 from dataset.camvid import Dataset
 
+from models.lr_schedule import get_cosine_schedule_with_warmup
+
 
 def format_logs(logs):
     str_logs = ['{}: {:.4}'.format(k, v) for k, v in logs.items()]
@@ -90,10 +92,13 @@ class SegModel(object):
             classes=self.cfg.data.CLASSES,
         )
 
-        train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, num_workers=12)
+        train_loader = DataLoader(train_dataset, batch_size=self.cfg.batch_size, shuffle=True, num_workers=12)
         valid_loader = DataLoader(valid_dataset, batch_size=1, shuffle=False, num_workers=4)
 
-        dataloaders = {'train': train_loader, 'valid': valid_loader}
+        dataloaders = { 'train': train_loader, \
+                        'valid': valid_loader, \
+                        'train_size': len(train_dataset),
+                        'valid_size': len(valid_dataset)}
 
         return dataloaders
 
@@ -105,6 +110,14 @@ class SegModel(object):
                 params=self.model.parameters(), 
                 lr=self.cfg.model.learning_rate, 
                 weight_decay=self.cfg.model.weight_decay)])
+
+        # lr scheduler
+        per_epoch_steps = self.dataloaders['train_size'] // self.cfg.model.batch_size
+        total_training_steps = self.cfg.model.max_epoch * per_epoch_steps
+        warmup_steps = self.cfg.model.warmup_coef * per_epoch_steps
+        if self.cfg.model.use_lr_scheduler:
+            self.lr_scheduler = get_cosine_schedule_with_warmup(self.optimizer, warmup_steps, total_training_steps)
+
 
         self.history_logs = edict()
         self.history_logs['train'] = []
@@ -193,5 +206,8 @@ class SegModel(object):
                 if phase == 'train':
                     loss_.backward()
                     self.optimizer.step()
+
+                    if self.cfg.model.use_lr_scheduler:
+                        self.lr_scheduler.step()
 
             return logs
