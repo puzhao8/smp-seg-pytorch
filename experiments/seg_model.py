@@ -116,7 +116,7 @@ class SegModel(object):
             valid_logs = self.train_one_epoch(epoch)
             
             # do something (save model, change lr, etc.)
-            if valid_logs['iou_score'] > self.cfg.max_score:
+            if valid_logs['iou_score'] > self.cfg.model.max_score:
                 max_score = valid_logs['iou_score']
                 # torch.save(self.model, self.model_url)
                 # torch.save(self.model.state_dict(), self.model_url)
