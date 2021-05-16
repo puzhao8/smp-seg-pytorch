@@ -10,7 +10,7 @@ import wandb
 from omegaconf import DictConfig, OmegaConf
 
 
-@hydra.main(config_path="./config", config_name="config_camvid")
+@hydra.main(config_path="./config", config_name="camvid_cfg")
 def run_app(cfg : DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
 

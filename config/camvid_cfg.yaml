@@ -17,11 +17,11 @@ model:
     max_epoch: 50
     batch_size: 32
     learning_rate: 0.1
-    weight_decay: 1e-3
+    weight_decay: 1e-4
     
 
     use_lr_scheduler: True
-    warmup_coef: 5
+    warmup_coef: 2
     
 
     max_score: 0.1 # If IoU > max_score, start to save model

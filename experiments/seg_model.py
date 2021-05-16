@@ -118,7 +118,6 @@ class SegModel(object):
         if self.cfg.model.use_lr_scheduler:
             self.lr_scheduler = get_cosine_schedule_with_warmup(self.optimizer, warmup_steps, total_training_steps)
 
-
         self.history_logs = edict()
         self.history_logs['train'] = []
         self.history_logs['valid'] = []
@@ -147,8 +146,10 @@ class SegModel(object):
             else:
                 self.model.eval()
 
-            logs = self.step(phase)            
-            wandb.log({phase: logs, 'epoch': epoch})
+            logs = self.step(phase) 
+
+            currlr = self.lr_scheduler.get_last_lr()[0] if self.cfg.model.use_lr_scheduler else self.cfg.model.learning_rate           
+            wandb.log({phase: logs, 'epoch': epoch, 'lr': currlr})
 
             temp = [logs["total_loss"]] + [logs[self.metrics[i].__name__] for i in range(0, len(self.metrics))]
             self.history_logs[phase].append(temp)
