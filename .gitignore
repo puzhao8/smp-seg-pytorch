@@ -1,3 +1,9 @@
+data/*
+README_local_only.md
+outputs/*
+
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

@@ -12,7 +12,7 @@ class Epoch:
         self.metrics = metrics
         self.stage_name = stage_name
         self.verbose = verbose
-        self.device = device
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
         self._to_device()
 
