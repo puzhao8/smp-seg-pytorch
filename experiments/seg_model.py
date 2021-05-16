@@ -125,6 +125,7 @@ class SegModel(object):
 
         # --------------------------------- Train -------------------------------------------
         for epoch in range(0, self.cfg.model.max_epoch):
+            epoch = epoch + 1
             print(f"\n==> train epoch: {epoch}/{self.cfg.model.max_epoch}")
             valid_logs = self.train_one_epoch(epoch)
             
