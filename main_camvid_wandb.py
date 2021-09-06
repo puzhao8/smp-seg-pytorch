@@ -1,14 +1,13 @@
 
+import os, json
 from easydict import EasyDict as edict
 from pathlib import Path
 from prettyprinter import pprint
 from imageio import imread, imsave
-import os, json
 
 import hydra
 import wandb
 from omegaconf import DictConfig, OmegaConf
-
 
 @hydra.main(config_path="./config", config_name="camvid_cfg")
 def run_app(cfg : DictConfig) -> None:

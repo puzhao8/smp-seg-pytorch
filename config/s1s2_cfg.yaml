@@ -1,11 +1,11 @@
 project:
-    name: MTBS
+    name: S1S2
 
 data:
-    name: camvid
-    # dir: G:\PyProjects\smp-seg-pytorch\data\CamVid
+    name: s1s2
+    dir: D:\wildfire-s1s2-dataset-ak
     useDataWoCAug: False
-    CLASSES: ['car', 'tree']
+    CLASSES: ['unburn', 'burn']
 
     random_state: 42
 

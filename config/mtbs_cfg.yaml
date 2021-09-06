@@ -2,10 +2,9 @@ project:
     name: MTBS
 
 data:
-    name: camvid
-    # dir: G:\PyProjects\smp-seg-pytorch\data\CamVid
+    name: mtbs
     useDataWoCAug: False
-    CLASSES: ['car', 'tree']
+    CLASSES: ['unburn', 'low', 'moderate', 'high', 'greener', 'cloud']
 
     random_state: 42
 
@@ -15,8 +14,8 @@ model:
     ENCODER: resnet18 # 'mobilenet_v2'
     ENCODER_WEIGHTS: imagenet
 
-    max_epoch: 300
-    batch_size: 32
+    max_epoch: 10
+    batch_size: 16
     learning_rate: 1e-4
     weight_decay: 1e-4
     

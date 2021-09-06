@@ -117,7 +117,6 @@ if __name__ == "__main__":
     valid_loader = DataLoader(valid_dataset, batch_size=1, shuffle=False, num_workers=4)
 
 
-
     """ train configuration """
     # create epoch runners 
     # it is a simple loop of iterating over dataloader`s samples

@@ -8,6 +8,7 @@ def init_model(cfg):
         model = smp.Unet(
             encoder_name = cfg.model.ENCODER, 
             encoder_weights = cfg.model.ENCODER_WEIGHTS, 
+            in_channels = 12,
             classes = len(cfg.data.CLASSES), 
             activation = cfg.model.ACTIVATION,
         )

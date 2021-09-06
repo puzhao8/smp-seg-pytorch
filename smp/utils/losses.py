@@ -1,3 +1,4 @@
+from os import makedirs
 import torch.nn as nn
 
 from . import base
@@ -65,3 +66,4 @@ class BCELoss(nn.BCELoss, base.Loss):
 
 class BCEWithLogitsLoss(nn.BCEWithLogitsLoss, base.Loss):
     pass
+

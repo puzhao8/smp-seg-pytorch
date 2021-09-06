@@ -1,39 +1,37 @@
-import os, sys
+import os, sys, time, copy
 import numpy as np
 from pathlib import Path
+
 import hydra
 from omegaconf import DictConfig, OmegaConf
-import copy
+from tqdm import tqdm as tqdm
+from easydict import EasyDict as edict
 
-import time
 import torch
 import torch.optim as optim
 import torch.nn as nn
 import torch.nn.functional as F
-from easydict import EasyDict as edict
-
-from tqdm import tqdm as tqdm
-
-import logging
-logger = logging.getLogger(__name__)
 
 import smp
+from smp.losses.focal import FocalLoss
+from smp.losses.dice import DiceLoss
+
 from models.net_arch import init_model
 import wandb
 
-f_score = smp.utils.functional.f_score
+focal_loss = FocalLoss(mode="multiclass")
+dice_loss = DiceLoss(mode="multiclass", smooth=1)
 
-# Dice/F1 score - https://en.wikipedia.org/wiki/S%C3%B8rensen%E2%80%93Dice_coefficient
-# IoU/Jaccard score - https://en.wikipedia.org/wiki/Jaccard_index
-diceLoss = smp.utils.losses.DiceLoss(eps=1)
 AverageValueMeter =  smp.utils.train.AverageValueMeter
+
+# dataset
+from torch.utils.data import DataLoader
+# from dataset.camvid import Dataset
+from dataset.mtbs_l8 import Dataset
 
 # Augmentations
 from dataset.augument import get_training_augmentation, \
     get_validation_augmentation, get_preprocessing
-
-from torch.utils.data import DataLoader
-from dataset.camvid import Dataset
 
 from models.lr_schedule import get_cosine_schedule_with_warmup
 
@@ -52,44 +50,40 @@ class SegModel(object):
         self.DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
         self.model = init_model(cfg)
-        self.model_url = str(self.project_dir / "outputs" / "best_model.pth")
+        # self.model_url = str(self.project_dir / "outputs" / "best_model.pth")
+        self.model_url = str(self.project_dir / "outputs" / os.path.split(self.cfg.experiment.output)[-1] / "best_model.pth")
 
         self.preprocessing_fn = \
             smp.encoders.get_preprocessing_fn(cfg.model.ENCODER, cfg.model.ENCODER_WEIGHTS)
-
 
         self.metrics = [smp.utils.metrics.IoU(threshold=0.5),
                         smp.utils.metrics.Fscore()]
 
         # specify data folder
-        data_dir = self.project_dir / "data" / "CamVid"
-        # data_dir = Path(cfg.data.dir)
+        # data_dir = self.project_dir / "data" / "CamVid"
+        data_dir = self.project_dir / "data" / "MTBS_L8_Tiles"
         
-        self.x_train_dir = data_dir / 'train'
-        self.y_train_dir = data_dir / 'trainannot'
+        self.train_dir = data_dir / 'US'
+        self.valid_dir = data_dir / 'US'
+        self.test_dir = data_dir /  'train'
 
-        self.x_valid_dir = data_dir / 'val'
-        self.y_valid_dir = data_dir / 'valannot'
-
-        self.x_test_dir = data_dir /  'test'
-        self.y_test_dir = data_dir / 'testannot'
 
     def get_dataloaders(self) -> dict:
 
         """ Data Preparation """
         train_dataset = Dataset(
-            self.x_train_dir, 
-            self.y_train_dir, 
-            augmentation=get_training_augmentation(), 
-            preprocessing=get_preprocessing(self.preprocessing_fn),
+            self.train_dir, 
+            None, 
+            # augmentation=get_training_augmentation(), 
+            # preprocessing=get_preprocessing(self.preprocessing_fn),
             classes=self.cfg.data.CLASSES,
         )
 
         valid_dataset = Dataset(
-            self.x_valid_dir, 
-            self.y_valid_dir, 
-            augmentation=get_validation_augmentation(), 
-            preprocessing=get_preprocessing(self.preprocessing_fn),
+            self.valid_dir, 
+            None, 
+            # augmentation=get_validation_augmentation(), 
+            # preprocessing=get_preprocessing(self.preprocessing_fn),
             classes=self.cfg.data.CLASSES,
         )
 
@@ -129,17 +123,18 @@ class SegModel(object):
             print(f"\n==> train epoch: {epoch}/{self.cfg.model.max_epoch}")
             valid_logs = self.train_one_epoch(epoch)
             
-            # do something (save model, change lr, etc.)
-            if valid_logs['iou_score'] > self.cfg.model.max_score:
-                max_score = valid_logs['iou_score']
-                torch.save(self.model, self.model_url)
-                # torch.save(self.model.state_dict(), self.model_url)
-                print('Model saved!')
+            torch.save(self.model, self.model_url)
+            if False:
+                # do something (save model, change lr, etc.)
+                if valid_logs['iou_score'] > self.cfg.model.max_score:
+                    max_score = valid_logs['iou_score']
+                    torch.save(self.model, self.model_url)
+                    # torch.save(self.model.state_dict(), self.model_url)
+                    print('Model saved!')
 
             if epoch % 50 == 0:
                 self.optimizer.param_groups[0]['lr'] = 0.1 * self.optimizer.param_groups[0]['lr']
                         
-        
     def train_one_epoch(self, epoch):
         self.model.to(self.DEVICE)
         
@@ -155,8 +150,8 @@ class SegModel(object):
             currlr = self.lr_scheduler.get_last_lr()[0] if self.cfg.model.use_lr_scheduler else self.optimizer.param_groups[0]['lr']          
             wandb.log({phase: logs, 'epoch': epoch, 'lr': currlr})
 
-            temp = [logs["total_loss"]] + [logs[self.metrics[i].__name__] for i in range(0, len(self.metrics))]
-            self.history_logs[phase].append(temp)
+            # temp = [logs["total_loss"]] + [logs[self.metrics[i].__name__] for i in range(0, len(self.metrics))]
+            # self.history_logs[phase].append(temp)
 
             if phase == 'valid':
                 valid_logs = logs
@@ -166,7 +161,7 @@ class SegModel(object):
     def step(self, phase) -> dict:
         logs = {}
         loss_meter = AverageValueMeter()
-        metrics_meters = {metric.__name__: AverageValueMeter() for metric in self.metrics}
+        metrics_meters = {f"{metric.__name__}_{cls}": AverageValueMeter() for cls in range(6) for metric in self.metrics}
 
         if ('Train' in phase) and (self.cfg.useDataWoCAug):
             dataLoader_woCAug = iter(self.dataloaders['Train_woCAug'])
@@ -183,11 +178,10 @@ class SegModel(object):
 
                 y_pred = self.model.forward(x)
 
-                dice_loss_ =  diceLoss(y_pred, y)
-                # focal_loss_ = self.cfg.alpha * focal_loss(y_pred, y)
-                # tv_loss_ = 1e-5 * self.cfg.beta * torch.mean(tv_loss(y_pred))
+                dice_loss_value =  dice_loss(y_pred, y.long())
+                focal_loss_value = focal_loss(y_pred, y.long())
 
-                loss_ = dice_loss_
+                loss_ = dice_loss_value + focal_loss_value
 
                 # update loss logs
                 loss_value = loss_.cpu().detach().numpy()
@@ -196,10 +190,15 @@ class SegModel(object):
                 loss_logs = {'total_loss': loss_meter.mean}
                 logs.update(loss_logs)
 
-                # update metrics logs
-                for metric_fn in self.metrics:
-                    metric_value = metric_fn(y_pred, y).cpu().detach().numpy()
-                    metrics_meters[metric_fn.__name__].add(metric_value)
+                label_pred = torch.argmax(y_pred, axis=1).squeeze()
+
+                for cls in range(6):
+                    cls_mask_true = (y == cls).type(torch.float)
+                    cls_mask_pred = (label_pred == cls).type(torch.float)
+                    # update metrics logs
+                    for metric_fn in self.metrics:
+                        metric_value = metric_fn(cls_mask_pred, cls_mask_true).cpu().detach().numpy()
+                        metrics_meters[f"{metric_fn.__name__}_{cls}"].add(metric_value)
 
                 metrics_logs = {k: v.mean for k, v in metrics_meters.items()}
                 logs.update(metrics_logs)

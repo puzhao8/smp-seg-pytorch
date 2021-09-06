@@ -1,3 +1,4 @@
+
 #: Loss binary mode suppose you are solving binary segmentation task.
 #: That mean yor have only one class which pixels are labled as **1**,
 #: the rest pixels are background and labeled as **0**.
