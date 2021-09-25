@@ -3,9 +3,11 @@ project:
 
 data:
     name: s1s2
-    dir: D:\wildfire-s1s2-dataset-ak
+    satellite: ALOS
+    dir: D:\wildfire-s1s2-dataset-ak-tiles
     useDataWoCAug: False
-    CLASSES: ['unburn', 'burn']
+    SEED: 42
+    CLASSES: ['unburn', 'burned']
 
     random_state: 42
 
@@ -14,8 +16,9 @@ model:
     ACTIVATION: sigmoid
     ENCODER: resnet18 # 'mobilenet_v2'
     ENCODER_WEIGHTS: imagenet
+    INPUT_CHANNELS: 6
 
-    max_epoch: 300
+    max_epoch: 100
     batch_size: 32
     learning_rate: 1e-4
     weight_decay: 1e-4
@@ -29,7 +32,7 @@ model:
     verbose: True
 
 experiment:
-    note: dft
+    note: ${data.satellite}
     name: ${data.name}_${model.ARCH}_${model.ENCODER}_${experiment.note}
     output: ./outputs/run_${experiment.name}_${now:%Y%m%dT%H%M%S} #${defaults.0.data}
 

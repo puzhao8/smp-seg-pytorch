@@ -5,27 +5,27 @@ data:
     name: camvid
     # dir: G:\PyProjects\smp-seg-pytorch\data\CamVid
     useDataWoCAug: False
-    CLASSES: ['car', 'tree']
+    CLASSES: ['car']
 
     random_state: 42
+    SEED: 42
 
 model:
-    ARCH: UNet
+    ARCH: DeepLabV3+
     ACTIVATION: sigmoid
-    ENCODER: resnet18 # 'mobilenet_v2'
+    ENCODER: mobilenet_v2 # 'mobilenet_v2'
     ENCODER_WEIGHTS: imagenet
+    INPUT_CHANNELS: 3
 
-    max_epoch: 300
-    batch_size: 32
+    max_epoch: 30
+    batch_size: 8
     learning_rate: 1e-4
     weight_decay: 1e-4
     
-
     use_lr_scheduler: False
     warmup_coef: 2
     
     max_score: 0.1 # If IoU > max_score, start to save model
-
     verbose: True
 
 experiment:

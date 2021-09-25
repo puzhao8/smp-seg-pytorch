@@ -1,37 +1,53 @@
-import os, sys, time, copy
-import numpy as np
+
+import os, json
+import random
+from easydict import EasyDict as edict
 from pathlib import Path
+from prettyprinter import pprint
+from imageio import imread, imsave
 
 import hydra
+import wandb
 from omegaconf import DictConfig, OmegaConf
-from tqdm import tqdm as tqdm
-from easydict import EasyDict as edict
 
+
+###################################################################################
+import os, sys
+import numpy as np
+from pathlib import Path
+import hydra
+from omegaconf import DictConfig, OmegaConf
+
+import copy
+import time
 import torch
 import torch.optim as optim
 import torch.nn as nn
 import torch.nn.functional as F
+from easydict import EasyDict as edict
+
+from tqdm import tqdm as tqdm
+
+import logging
+logger = logging.getLogger(__name__)
 
 import smp
-from smp.losses.focal import FocalLoss
-from smp.losses.dice import DiceLoss
-
 from models.net_arch import init_model
 import wandb
 
-focal_loss = FocalLoss(mode="multiclass")
-dice_loss = DiceLoss(mode="multiclass", smooth=1)
+f_score = smp.utils.functional.f_score
 
+# Dice/F1 score - https://en.wikipedia.org/wiki/S%C3%B8rensen%E2%80%93Dice_coefficient
+# IoU/Jaccard score - https://en.wikipedia.org/wiki/Jaccard_index
+diceLoss = smp.utils.losses.DiceLoss(eps=1)
 AverageValueMeter =  smp.utils.train.AverageValueMeter
-
-# dataset
-from torch.utils.data import DataLoader
-# from dataset.camvid import Dataset
-from dataset.dataset import MTBS
 
 # Augmentations
 from dataset.augument import get_training_augmentation, \
     get_validation_augmentation, get_preprocessing
+
+from torch.utils.data import DataLoader
+from dataset.wildfire import S1S2 as Dataset # ------------------------------------------------------- Dataset
 
 from models.lr_schedule import get_cosine_schedule_with_warmup
 
@@ -50,8 +66,7 @@ class SegModel(object):
         self.DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
         self.model = init_model(cfg)
-        # self.model_url = str(self.project_dir / "outputs" / "best_model.pth")
-        self.model_url = str(self.project_dir / "outputs" / os.path.split(self.cfg.experiment.output)[-1] / "best_model.pth")
+        self.model_url = str(self.project_dir / "outputs" / "best_model.pth")
 
         self.preprocessing_fn = \
             smp.encoders.get_preprocessing_fn(cfg.model.ENCODER, cfg.model.ENCODER_WEIGHTS)
@@ -59,29 +74,36 @@ class SegModel(object):
         self.metrics = [smp.utils.metrics.IoU(threshold=0.5),
                         smp.utils.metrics.Fscore()]
 
+        ''' -------------> need to improve <-----------------'''
         # specify data folder
-        # data_dir = self.project_dir / "data" / "CamVid"
-        data_dir = self.project_dir / "data" / "MTBS_L8_Tiles"
+        train_dir = Path(self.cfg.data.dir) / 'train'
+        valid_dir = Path(self.cfg.data.dir) / 'test'
         
-        self.train_dir = data_dir / 'US'
-        self.valid_dir = data_dir / 'US'
-        self.test_dir = data_dir /  'train'
+        self.x_train_dir = train_dir / self.cfg.data.satellite
+        self.y_train_dir = train_dir / "mask" / "poly"
+
+        self.x_valid_dir = valid_dir / self.cfg.data.satellite
+        self.y_valid_dir = valid_dir / 'mask' / "poly"
+
+        self.x_test_dir = valid_dir / self.cfg.data.satellite
+        self.y_test_dir = valid_dir / 'mask' / "poly"
+        '''--------------------------------------------------'''
 
 
     def get_dataloaders(self) -> dict:
 
         """ Data Preparation """
-        train_dataset = MTBS(
-            self.train_dir, 
-            None, 
+        train_dataset = Dataset(
+            self.x_train_dir, 
+            self.y_train_dir, 
             # augmentation=get_training_augmentation(), 
             # preprocessing=get_preprocessing(self.preprocessing_fn),
             classes=self.cfg.data.CLASSES,
         )
 
-        valid_dataset = MTBS(
-            self.valid_dir, 
-            None, 
+        valid_dataset = Dataset(
+            self.x_valid_dir, 
+            self.y_valid_dir, 
             # augmentation=get_validation_augmentation(), 
             # preprocessing=get_preprocessing(self.preprocessing_fn),
             classes=self.cfg.data.CLASSES,
@@ -90,10 +112,12 @@ class SegModel(object):
         train_loader = DataLoader(train_dataset, batch_size=self.cfg.model.batch_size, shuffle=True, num_workers=12)
         valid_loader = DataLoader(valid_dataset, batch_size=self.cfg.model.batch_size, shuffle=False, num_workers=4)
 
-        dataloaders = { 'train': train_loader, \
+        dataloaders = { 
+                        'train': train_loader, \
                         'valid': valid_loader, \
                         'train_size': len(train_dataset),
-                        'valid_size': len(valid_dataset)}
+                        'valid_size': len(valid_dataset)
+                    }
 
         return dataloaders
 
@@ -123,18 +147,17 @@ class SegModel(object):
             print(f"\n==> train epoch: {epoch}/{self.cfg.model.max_epoch}")
             valid_logs = self.train_one_epoch(epoch)
             
-            torch.save(self.model, self.model_url)
-            if False:
-                # do something (save model, change lr, etc.)
-                if valid_logs['iou_score'] > self.cfg.model.max_score:
-                    max_score = valid_logs['iou_score']
-                    torch.save(self.model, self.model_url)
-                    # torch.save(self.model.state_dict(), self.model_url)
-                    print('Model saved!')
+            # do something (save model, change lr, etc.)
+            if valid_logs['iou_score'] > self.cfg.model.max_score:
+                max_score = valid_logs['iou_score']
+                torch.save(self.model, self.model_url)
+                # torch.save(self.model.state_dict(), self.model_url)
+                print('Model saved!')
 
             if epoch % 50 == 0:
                 self.optimizer.param_groups[0]['lr'] = 0.1 * self.optimizer.param_groups[0]['lr']
                         
+        
     def train_one_epoch(self, epoch):
         self.model.to(self.DEVICE)
         
@@ -150,8 +173,8 @@ class SegModel(object):
             currlr = self.lr_scheduler.get_last_lr()[0] if self.cfg.model.use_lr_scheduler else self.optimizer.param_groups[0]['lr']          
             wandb.log({phase: logs, 'epoch': epoch, 'lr': currlr})
 
-            # temp = [logs["total_loss"]] + [logs[self.metrics[i].__name__] for i in range(0, len(self.metrics))]
-            # self.history_logs[phase].append(temp)
+            temp = [logs["total_loss"]] + [logs[self.metrics[i].__name__] for i in range(0, len(self.metrics))]
+            self.history_logs[phase].append(temp)
 
             if phase == 'valid':
                 valid_logs = logs
@@ -161,29 +184,33 @@ class SegModel(object):
     def step(self, phase) -> dict:
         logs = {}
         loss_meter = AverageValueMeter()
-        metrics_meters = {f"{metric.__name__}_{cls}": AverageValueMeter() for cls in range(6) for metric in self.metrics}
+        metrics_meters = {metric.__name__: AverageValueMeter() for metric in self.metrics}
 
-        if ('Train' in phase) and (self.cfg.useDataWoCAug):
-            dataLoader_woCAug = iter(self.dataloaders['Train_woCAug'])
+        # if ('Train' in phase) and (self.cfg.useDataWoCAug):
+        #     dataLoader_woCAug = iter(self.dataloaders['Train_woCAug'])
 
         with tqdm(iter(self.dataloaders[phase]), desc=phase, file=sys.stdout, disable=not self.cfg.model.verbose) as iterator:
             for (x1, x2, y) in iterator:
                 x = torch.cat((x1, x2), dim=1)
 
-                if ('Train' in phase) and (self.cfg.useDataWoCAug):
-                    x0, y0 = next(dataLoader_woCAug)  
-                    x = torch.cat((x0, x), dim=0)
-                    y = torch.cat((y0, y), dim=0)
+                # print(x.shape)
+                # print(y.shape)
+
+                # if ('Train' in phase) and (self.cfg.useDataWoCAug):
+                #     x0, y0 = next(dataLoader_woCAug)  
+                #     x = torch.cat((x0, x), dim=0)
+                #     y = torch.cat((y0, y), dim=0)
 
                 x, y = x.to(self.DEVICE), y.to(self.DEVICE)
                 self.optimizer.zero_grad()
 
                 y_pred = self.model.forward(x)
 
-                dice_loss_value =  dice_loss(y_pred, y.long())
-                focal_loss_value = focal_loss(y_pred, y.long())
+                dice_loss_ =  diceLoss(y_pred, y)
+                # focal_loss_ = self.cfg.alpha * focal_loss(y_pred, y)
+                # tv_loss_ = 1e-5 * self.cfg.beta * torch.mean(tv_loss(y_pred))
 
-                loss_ = dice_loss_value + focal_loss_value
+                loss_ = dice_loss_
 
                 # update loss logs
                 loss_value = loss_.cpu().detach().numpy()
@@ -192,15 +219,10 @@ class SegModel(object):
                 loss_logs = {'total_loss': loss_meter.mean}
                 logs.update(loss_logs)
 
-                label_pred = torch.argmax(y_pred, axis=1).squeeze()
-
-                for cls in range(6):
-                    cls_mask_true = (y == cls).type(torch.float)
-                    cls_mask_pred = (label_pred == cls).type(torch.float)
-                    # update metrics logs
-                    for metric_fn in self.metrics:
-                        metric_value = metric_fn(cls_mask_pred, cls_mask_true).cpu().detach().numpy()
-                        metrics_meters[f"{metric_fn.__name__}_{cls}"].add(metric_value)
+                # update metrics logs
+                for metric_fn in self.metrics:
+                    metric_value = metric_fn(y_pred, y).cpu().detach().numpy()
+                    metrics_meters[metric_fn.__name__].add(metric_value)
 
                 metrics_logs = {k: v.mean for k, v in metrics_meters.items()}
                 logs.update(metrics_logs)
@@ -218,3 +240,43 @@ class SegModel(object):
                         self.lr_scheduler.step()
 
             return logs
+##############################################################
+
+
+
+def set_random_seed(seed, deterministic=False):
+    """Set random seed.
+
+    Args:
+        seed (int): Seed to be used.
+        deterministic (bool): Whether to set the deterministic option for
+            CUDNN backend, i.e., set `torch.backends.cudnn.deterministic`
+            to True and `torch.backends.cudnn.benchmark` to False.
+            Default: False.
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    if deterministic:
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+
+
+@hydra.main(config_path="./config", config_name="s1s2_cfg")
+def run_app(cfg : DictConfig) -> None:
+    print(OmegaConf.to_yaml(cfg))
+
+    wandb.init(config=cfg, project=cfg.project.name, name=cfg.experiment.name)
+    # project_dir = Path(hydra.utils.get_original_cwd())
+    
+    # set randome seed
+    set_random_seed(cfg.data.SEED)
+
+    # from experiments.seg_model import SegModel
+    model = SegModel(cfg)
+    model.run()
+
+
+if __name__ == "__main__":
+    run_app()

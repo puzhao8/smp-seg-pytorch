@@ -26,7 +26,7 @@ class GeoTIFF:
         return im_proj, im_geotrans, im_data
 
     # write tiff file
-    def save(self, url, im_data, bandNameList=None, im_proj=None, im_geotrans=None):
+    def save(self, url, im_data, bandNameList=None, im_proj=None, im_geotrans=None, tiling=False):
         # gdal data types include:
         # gdal.GDT_Byte,
         # gdal .GDT_UInt16, gdal.GDT_Int16, gdal.GDT_UInt32, gdal.GDT_Int32,
@@ -62,8 +62,12 @@ class GeoTIFF:
                                                                                     "INTERLEAVE=BAND"])
 
         if (raster != None):
-            raster.SetGeoTransform(im_geotrans)  # write affine transformation parameter
-            raster.SetProjection(im_proj)  # write Projection
+            if tiling: 
+                pass
+                # print("tiling ...")
+            else:
+                raster.SetGeoTransform(im_geotrans)  # write affine transformation parameter
+                raster.SetProjection(im_proj)  # write Projection
         else:
             print("Fails to create output file !!!")
         

@@ -75,7 +75,7 @@ if __name__ == "__main__":
     DEVICE = 'cuda'
 
     # create segmentation model with pretrained encoder
-    model = smp.FPN(
+    model = smp.Unet(
         encoder_name=ENCODER, 
         encoder_weights=ENCODER_WEIGHTS, 
         classes=len(CLASSES), 
@@ -113,7 +113,7 @@ if __name__ == "__main__":
         classes=CLASSES,
     )
 
-    train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, num_workers=12)
+    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=12)
     valid_loader = DataLoader(valid_dataset, batch_size=1, shuffle=False, num_workers=4)
 
 
