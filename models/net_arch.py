@@ -27,3 +27,21 @@ def init_model(cfg):
             in_channels = cfg.model.INPUT_CHANNELS
         )
         return model
+
+    
+    if cfg.model.ARCH == 'FuseUNet':
+        print(f"===> Network Architecture: {cfg.model.ARCH}")
+        # create segmentation model with pretrained encoder
+
+        S1_INPUT_CHANNELS = len(list(cfg.model.S1_INPUT_BANDS))
+        S2_INPUT_CHANNELS = len(list(cfg.model.S2_INPUT_BANDS))
+
+        from models.FuseUNet import FuseUnet
+        model = FuseUnet(
+            encoder_name = cfg.model.ENCODER, 
+            encoder_weights = cfg.model.ENCODER_WEIGHTS, 
+            in_channels = (S1_INPUT_CHANNELS, S2_INPUT_CHANNELS),
+            classes = len(cfg.data.CLASSES), 
+            activation = cfg.model.ACTIVATION,
+        )
+        return model

@@ -9,69 +9,99 @@ from pathlib import Path
 import tifffile as tiff
 import smp
 
+import matplotlib.pyplot as plt
+from matplotlib.colors import ListedColormap, LinearSegmentedColormap
+from utils.GeoTIFF import GeoTIFF
+geotiff = GeoTIFF()
 
+import wandb
 
-def inference(model, test_dir, test_id):
-    # model.cpu()
-    model.to("cuda")
-    patchsize = 512
-    NUM_CLASS = 2
-
-    # if '.tif' == str(url)[-4:]: # tif
-    #     img0 = tiff.imread(url)
-    #     img = interval_95(np.nan_to_num(img0, 0)) * 255
-    # elif '.png' == str(url)[-4:]: # png
-    #     img = imread(url)
-    pre_url = test_dir / "pre" / f"{test_id}.tif"
-    post_url = test_dir / "post" / f"{test_id}.tif"
-    # mask_url = test_dir / "mask" / f"{test_id}.tif"
-
-    pre_image = tiff.imread(pre_url) 
-    post_image = tiff.imread(post_url) 
-    # mask = tiff.imread(mask_url) 
-
-    img = np.concatenate((pre_image, post_image), axis=-1) # H * W * C
-    # img = img.transpose(1,2,0) # H * W * C
-
-    # S1
-    img = (np.clip(img, -30, 0) + 30) / 30
-    
-
+def image_padding(img, patchsize):
     def zero_padding(arr, patchsize):
         # print("zero_padding patchsize: {}".format(patchsize))
-        (h, w, c) = arr.shape
+        (c, h, w) = arr.shape
         pad_h = (1 + np.floor(h/patchsize)) * patchsize - h
         pad_w = (1 + np.floor(w/patchsize)) * patchsize - w
 
-        arr_pad = np.pad(arr, ((0, int(pad_h)), (0, int(pad_w)), (0, 0)), mode='symmetric')
+        arr_pad = np.pad(arr, ((0, 0), (0, int(pad_h)), (0, int(pad_w))), mode='symmetric')
         return arr_pad
 
-
-    input_patchsize = 2 * patchsize
     padSize = int(patchsize/2)
 
-    H, W, C = img.shape
     img_pad0 = zero_padding(img, patchsize) # pad img into a shape: (m*PATCHSIZE, n*PATCHSIZE)
-    img_pad = np.pad(img_pad0, ((padSize, padSize), (padSize, padSize), (0, 0)), mode='symmetric')
+    img_pad = np.pad(img_pad0, ((0, 0), (padSize, padSize), (padSize, padSize)), mode='symmetric')
+    return img_pad
 
-    # img_preprocessed = self.preprocessing_fn(img_pad)
-    img_preprocessed = img_pad
-    in_tensor = torch.from_numpy(img_preprocessed.transpose(2, 0, 1)).unsqueeze(0) # C * H * W
+def inference(model, test_dir, test_id, satellites, patchsize=512, NUM_CLASS=2):
+    # model.cpu()
+    model.to("cuda")
+    test_id = test_id.split("_")[0]
 
-    (Height, Width, Channels) = img_pad.shape
+    input_tensors = []
+    for SAT in satellites:
+        # if 'S1' != SAT: test_id = test_id.split("_")[0]
+        pre_url = test_dir / SAT / "pre" / f"{test_id}.tif"
+        post_url = test_dir / SAT / "post" / f"{test_id}.tif"
+
+        pre_image = tiff.imread(pre_url) 
+        post_image = tiff.imread(post_url) # C*H*W
+        # mask = tiff.imread(mask_url) 
+
+        if SAT in ['S1', 'ALOS']:
+            pre_image = (np.clip(pre_image, -30, 0) + 30) / 30
+            post_image = (np.clip(post_image, -30, 0) + 30) / 30
+
+        # if 'S2' == SAT: 
+        #     BANDS_INDEX = [0, 1, 2, 6, 8, 9]
+        #     pre_image = pre_image[:,:,BANDS_INDEX]
+        #     post_image = post_image[:,:,BANDS_INDEX]
+
+        # padding
+        pre_image_pad = image_padding(pre_image, patchsize)
+        post_image_pad = image_padding(post_image, patchsize)
+
+        # img_preprocessed = self.preprocessing_fn(img_pad)
+        # img_preprocessed = img_pad
+        pre_image_tensor = torch.from_numpy(pre_image_pad).unsqueeze(0) # n * C * H * W
+        post_image_tensor = torch.from_numpy(post_image_pad).unsqueeze(0) # n * C * H * W
+
+        input_tensors.append((pre_image_tensor, post_image_tensor))
+
+    C, H, W = post_image.shape
+    _, _, Height, Width = input_tensors[0][0].shape
     pred_mask_pad = np.zeros((Height, Width))
     prob_mask_pad = np.zeros((NUM_CLASS, Height, Width))
+
+    mode = 'single_sensor_prepost'
+    input_patchsize = 2 * patchsize
+    padSize = int(patchsize/2) 
     for i in tqdm(range(0, Height - input_patchsize + 1, patchsize)):
         for j in range(0, Width - input_patchsize + 1, patchsize):
             # print(i, i+input_patchsize, j, j+input_patchsize)
-            inputPatch = in_tensor[..., i:i+input_patchsize, j:j+input_patchsize]
 
-            # if self.cfg.ARCH == 'FCN':
-            #     predPatch = self.model(inputPatch.type(torch.cuda.FloatTensor))['out']
-            # else:
-            inputPatch.to("cuda")
-            predPatch = model.forward(inputPatch.type(torch.cuda.FloatTensor))
-            # predPatch = torch.sigmoid(predPatch)
+            ''' single sensor, bi-temporal images stacked, UNet '''
+            if 'single_sensor_prepost' == mode:
+                sat_tensor =  input_tensors[0]
+                pre_patch = sat_tensor[0][..., i:i+input_patchsize, j:j+input_patchsize]
+                post_patch = sat_tensor[1][..., i:i+input_patchsize, j:j+input_patchsize]
+
+                inputPatch = torch.cat([pre_patch, post_patch], dim=1) # stacked inputs
+                inputPatch = inputPatch.type(torch.cuda.FloatTensor)
+
+                predPatch = model.forward(inputPatch)
+                # predPatch = torch.sigmoid(predPatch)
+
+            ''' multiple sensors, post image, FuseUNet '''
+            if 'multi_sensor_post' == mode:
+                input_patchs = []
+                for sat_tensor in input_tensors:
+                    # pre_patch = sat_tensor[0][..., i:i+input_patchsize, j:j+input_patchsize]
+                    post_patch = sat_tensor[1][..., i:i+input_patchsize, j:j+input_patchsize]
+
+                    inputPatch = post_patch.type(torch.cuda.FloatTensor)
+                    input_patchs.append(inputPatch)
+
+                predPatch, _ = model.forward(input_patchs)
 
             predPatch = predPatch.squeeze().cpu().detach().numpy()#.round()
             predLabel = np.argmax(predPatch, axis=0).squeeze()
@@ -102,83 +132,100 @@ def gen_errMap(grouthTruth, preMap, save_url=False):
     if save_url:
         plt.imsave(save_url, errMap, cmap=my_cmap)
 
-        # saveName = os.path.split(save_url)[-1].split('.')[0]
-        # errMap_rgb = imread(save_url)
-        # wandb.log({f"test_errMap/{saveName}": wandb.Image(errMap_rgb)})
+        saveName = os.path.split(save_url)[-1].split('.')[0]
+        errMap_rgb = imread(save_url)
+        wandb.log({f"test_errMap/{saveName}": wandb.Image(errMap_rgb)})
     return errMap
 
 
-if __name__ == "__main__":
+def apply_model_on_event(model, test_id, output_dir, satellites):
 
-    import matplotlib.pyplot as plt
-    from matplotlib.colors import ListedColormap, LinearSegmentedColormap
-    from utils.GeoTIFF import GeoTIFF
-    geotiff = GeoTIFF()
-
-    model = torch.load("G:/PyProjects/smp-seg-pytorch/outputs/best_model.pth")
-    output_dir = Path("G:/PyProjects/smp-seg-pytorch/outputs/test_output_new2")
     output_dir.mkdir(exist_ok=True)
+    data_dir = Path("D:\wildfire-s1s2-dataset-ak-tiles") / "test_images"
 
-    data_dir = Path("D:\wildfire-s1s2-dataset-ak")
-    test_dir = Path(f"{str(data_dir)}\S1")
 
-    # load test_id list
+    orbKeyLen = len(test_id.split("_")[-1]) + 1 
+    event = test_id[:(len(test_id)-orbKeyLen)]
+    print(event)
+
+    print(f"------------------> {test_id} <-------------------")
+
+    predMask, probMask = inference(model, data_dir, test_id, satellites)
+
+    print(f"predMask shape: {predMask.shape}, unique: {np.unique(predMask)}")
+    print(f"probMask: [{probMask.min()}, {probMask.max()}]")
+
+    # # mtbs_palette =  ["000000", "006400","7fffd4","ffff00","ff0000","7fff00"]
+    # # [0,100/255,0]
+    # mtbs_palette = [[0,100/255,0], [127/255,1,212/255], [1,1,0], [1,0,0], [127/255,1,0], [1,1,1]]
+
+    plt.imsave(output_dir / f"{test_id}_predLabel.png", predMask, cmap='gray', vmin=0, vmax=1)
+
+        # read and save true labels
+    if os.path.isfile(data_dir / "mask" / "poly" / f"{event}.tif"):
+        _, _, trueLabel = geotiff.read(data_dir / "mask" / "poly" / f"{event}.tif")
+        geotiff.save(output_dir / f"{test_id}_predLabel.tif", predMask[np.newaxis,]) 
+
+        trueLabel = trueLabel.squeeze()
+        # print(trueLabel.shape, predMask.shape)
+
+        plt.imsave(output_dir / f"{test_id}_trueLabel.png", trueLabel, cmap='gray', vmin=0, vmax=1)
+        gen_errMap(trueLabel, predMask, save_url=output_dir / f"{test_id}_errMap.png")
+
+
+
+def evaluate_model(cfg, SegModel):
+
     import json
-    json_url = "D:\wildfire-s1s2-dataset-ak-tiles/train_test.json"
+    json_url = Path(cfg.data.dir) / "train_test.json"
     with open(json_url) as json_file:
         split_dict = json.load(json_file)
     test_id_list = split_dict['test']['sarname']
 
-    test_id_list = [
-        'ak6657114321520190709_ASC50',
-        'ak6431815217120190620_ASC65',
-        'ak6576015988620190620_DSC73',
-        'ak6677714771520170722_ASC94',
-        'ak6490515328220190621_ASC36'
+    model = torch.load(SegModel.model_url)
+    output_dir = Path(SegModel.project_dir) / 'outputs'
+    output_dir.mkdir(exist_ok=True)
 
-        'ak6340015503620190614_DSC102',
-        'ak6340015503620190614_ASC36',
-
-        'ak6431815217120190620_ASC65',
-        'ak6431815217120190620_DSC102',
-        'ak6431815217120190620_DSC131',
-
-        # 'CA_2017_BC_1157_ASC64'
-            ]
-
-    def apply_model_on_event(test_id):
-        SAT = os.path.split(test_dir)[-1]
-
-        print(f"------------------> {test_id} <-------------------")
-
-        predMask, probMask = inference(model, test_dir, test_id)
-
-        print(f"predMask shape: {predMask.shape}, unique: {np.unique(predMask)}")
-        print(f"probMask: [{probMask.min()}, {probMask.max()}]")
-
-        # # mtbs_palette =  ["000000", "006400","7fffd4","ffff00","ff0000","7fff00"]
-        # # [0,100/255,0]
-        # mtbs_palette = [[0,100/255,0], [127/255,1,212/255], [1,1,0], [1,0,0], [127/255,1,0], [1,1,1]]
-
-        plt.imsave(output_dir / f"{test_id}_predLabel.png", predMask, cmap='gray', vmin=0, vmax=1)
-
-       
-        if 'S1' == SAT:
-            orbKeyLen = len(test_id.split("_")[-1]) + 1 
-            event = test_id[:(len(test_id)-orbKeyLen)]
-        else:
-            event = test_id
-        print(event)
-
-         # read and save true labels
-        if os.path.isfile(data_dir / "mask" / "poly" / f"{event}.tif"):
-            _, _, trueLabel = geotiff.read(data_dir / "mask" / "poly" / f"{event}.tif")
-            geotiff.save(output_dir / f"{test_id}_predLabel.tif", predMask[np.newaxis,]) 
-
-            trueLabel = trueLabel.squeeze()
-            plt.imsave(output_dir / f"{test_id}_trueLabel.png", trueLabel, cmap='gray', vmin=0, vmax=1)
-            gen_errMap(trueLabel, predMask, save_url=output_dir / f"{test_id}_errMap.png")
-        
-    
     for test_id in test_id_list:
-        apply_model_on_event(test_id)
+        apply_model_on_event(model, test_id, output_dir, satellites=cfg.data.satellites)
+
+
+
+import hydra
+import wandb
+from omegaconf import DictConfig, OmegaConf
+
+@hydra.main(config_path="./config", config_name="s1s2_fusion")
+def run_app(cfg : DictConfig) -> None:
+    print(OmegaConf.to_yaml(cfg))
+
+    wandb.init(config=cfg, project=cfg.project.name, name=cfg.experiment.name)
+    # project_dir = Path(hydra.utils.get_original_cwd())
+    #########################################################################
+
+    # # load test_id list
+    # import json
+    # json_url = "D:\wildfire-s1s2-dataset-ak-tiles/train_test.json"
+    # with open(json_url) as json_file:
+    #     split_dict = json.load(json_file)
+    # test_id_list = split_dict['test']['sarname']
+
+    # model = torch.load("G:/PyProjects/smp-seg-pytorch/outputs/best_model_mse.pth")
+    # output_dir = Path(f"G:/PyProjects/smp-seg-pytorch/outputs/test_output_mse")
+
+    # for test_id in test_id_list:
+    #     apply_model_on_event(model, test_id, output_dir, satellites=['S1', 'S2'])
+    
+    #########################################################################
+    wandb.finish()
+
+if __name__ == "__main__":
+    
+    run_app()
+
+
+    # model = torch.load("G:/PyProjects/smp-seg-pytorch/outputs/best_model_s1s2.pth")
+    # output_dir = Path(f"G:/PyProjects/smp-seg-pytorch/outputs/test_output_s1s2_")
+
+    # for test_id in test_id_list:
+    #     apply_model_on_event(model, test_id, output_dir, satellites=['S1', 'S2'])

@@ -12,6 +12,12 @@ class SegmentationModel(torch.nn.Module):
 
     def forward(self, x):
         """Sequentially pass `x` trough model`s encoder, decoder and heads"""
+        # if len(x) > 1:
+        #     x1, x2 = x
+        #     features = self.encoder(x)
+        #     decoder_output = self.decoder(*features)
+
+        # else:
         features = self.encoder(x)
         decoder_output = self.decoder(*features)
 

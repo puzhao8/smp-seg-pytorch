@@ -129,7 +129,7 @@ def tiling_wildfire_s1s2_dataset(REGION, workPath, savePath, tile_size, do_tilli
         if 'ASC' in sarname: split_dict[phase]['ASC'] += 1 
         if 'DSC' in sarname: split_dict[phase]['DSC'] += 1
 
-        if do_tilling:
+        if do_tilling and ('test' == phase):
             for sat in ["S2", "S1", "ALOS", "mask", "AUZ"]:
                 for folder in os.listdir(workPath / sat):
                     dstFolder = savePath / phase / sat / folder
@@ -138,11 +138,10 @@ def tiling_wildfire_s1s2_dataset(REGION, workPath, savePath, tile_size, do_tilli
                     event = sarname.split("_")[0]
                     filename = f"{sarname}.tif" if sat == "S1" else f"{event}.tif"
                     src_url = workPath / sat / folder / filename
-                    # print(src_url)
-
+                    
                     BANDS, BANDS_INDEX = get_BANDS_and_BANDS_INDEX(sat, REGION, folder)
-
-                    geotiff_tiling(src_url, dstFolder, BANDS, BANDS_INDEX, tile_size)
+                    
+                    geotiff_tiling(phase, src_url, dstFolder, BANDS, BANDS_INDEX, tile_size, False)
 
 
     for phase in ['train', 'test']:
@@ -158,7 +157,7 @@ if __name__ == "__main__":
 
     REGION = 'ak'
     workPath = Path(f"D://wildfire-s1s2-dataset-{REGION}")
-    savePath = Path(f"{str(workPath)}-tiles-v1")
+    savePath = Path(f"{str(workPath)}-tiles")
     savePath.mkdir(exist_ok=True)
  
     tiling_wildfire_s1s2_dataset(REGION, workPath, savePath, tile_size=256, do_tilling=True)
