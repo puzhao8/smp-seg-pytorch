@@ -3,7 +3,7 @@ project:
 
 data:
     name: s1s2
-    satellites: ['S2']
+    satellites: ['ALOS']
     dir: D:\wildfire-s1s2-dataset-ak-tiles
     useDataWoCAug: False
     SEED: 42
@@ -18,12 +18,16 @@ model:
     ENCODER_WEIGHTS: imagenet
     INPUT_CHANNELS: 6
 
-    max_epoch: 30
+    max_epoch: 20
     batch_size: 32
     learning_rate: 1e-4
     weight_decay: 1e-4
-    
 
+    S1_INPUT_BANDS: ['ND', 'VH', 'VV']
+    ALOS_INPUT_BANDS: ['ND', 'VH', 'VV']
+    S2_INPUT_BANDS: ['B2', 'B3', 'B4', 'B8', 'B11', 'B12']
+    REF_MASK: poly
+    
     use_lr_scheduler: False
     warmup_coef: 2
     
