@@ -151,10 +151,10 @@ class S1S2(BaseDataset):
         for sat in self.fps_dict.keys():
 
             post_fps = self.fps_dict[sat][1]
-            image_post = tiff.imread(post_fps[i])
+            image_post = tiff.imread(post_fps[i]) # C*H*W
             if sat in ['S1', 'ALOS']: image_post = (np.clip(image_post, -30, 0) + 30) / 30
 
-            if 'pre' in self.cfg.prepost:
+            if 'pre' in self.cfg.data.prepost:
                 pre_fps = self.fps_dict[sat][0]
                 image_pre = tiff.imread(pre_fps[i])
                 if sat in ['S1', 'ALOS']: image_pre = (np.clip(image_pre, -30, 0) + 30) / 30
@@ -167,7 +167,7 @@ class S1S2(BaseDataset):
         
         if 'poly' == self.cfg.data.REF_MASK:
             masks = [(mask == v) for v in self.class_values] # 1~6
-            mask = np.stack(masks, axis=0).astype('float')
+            mask = np.stack(masks, axis=0).astype('float32')
             image_list.append(mask)
 
         # apply augmentations
@@ -175,13 +175,14 @@ class S1S2(BaseDataset):
             # sample = self.augmentation(image=image, mask=mask)
             # image, mask = sample['image'], sample['mask']
 
-            image_list = list(map(self.augmentation, image_list))
+            image_list = [self.augmentation(image=image.transpose(1,2,0))['image'].transpose(2,0,1) for image in image_list]
         
         # apply preprocessing
         if self.preprocessing:
-            sample = self.preprocessing(image=mask, mask=mask)
-            image, mask = sample['image'], sample['mask']
-            
+            # sample = self.preprocessing(image=mask, mask=mask)
+            # image, mask = sample['image'], sample['mask']
+            image_list = [self.preprocessing(image=image.transpose(1,2,0))['image'].transpose(2,0,1) for image in image_list]
+
         return tuple(image_list)
         
     def __len__(self):

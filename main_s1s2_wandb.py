@@ -87,7 +87,7 @@ class SegModel(object):
         train_dataset = Dataset(
             self.train_dir, 
             self.cfg, 
-            # augmentation=get_training_augmentation(), 
+            augmentation=get_training_augmentation(), 
             # preprocessing=get_preprocessing(self.preprocessing_fn),
             classes=self.cfg.data.CLASSES,
         )
@@ -95,7 +95,7 @@ class SegModel(object):
         valid_dataset = Dataset(
             self.valid_dir, 
             self.cfg, 
-            # augmentation=get_validation_augmentation(), 
+            augmentation=get_validation_augmentation(), 
             # preprocessing=get_preprocessing(self.preprocessing_fn),
             classes=self.cfg.data.CLASSES,
         )

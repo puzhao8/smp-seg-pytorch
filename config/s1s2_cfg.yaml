@@ -6,6 +6,7 @@ data:
     satellites: ['S1']
     prepost: ['pre', 'post']
     dir: /cephyr/NOBACKUP/groups/snic2021-7-104/wildfire-s1s2-dataset-ak-tiles
+    # dir: D:\wildfire-s1s2-dataset-ak-tiles
 
     useDataWoCAug: False
     SEED: 42

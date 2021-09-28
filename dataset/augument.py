@@ -7,20 +7,20 @@ def get_training_augmentation():
 
         albu.ShiftScaleRotate(scale_limit=0.5, rotate_limit=0, shift_limit=0.1, p=1, border_mode=0),
 
-        albu.PadIfNeeded(min_height=320, min_width=320, always_apply=True, border_mode=0),
-        albu.RandomCrop(height=320, width=320, always_apply=True),
+        albu.PadIfNeeded(min_height=256, min_width=256, always_apply=True, border_mode=0),
+        albu.RandomCrop(height=256, width=256, always_apply=True),
 
         albu.IAAAdditiveGaussianNoise(p=0.2),
         albu.IAAPerspective(p=0.5),
 
-        albu.OneOf(
-            [
-                albu.CLAHE(p=1),
-                albu.RandomBrightness(p=1),
-                albu.RandomGamma(p=1),
-            ],
-            p=0.9,
-        ),
+        # albu.OneOf(
+        #     [
+        #         albu.CLAHE(p=1),
+        #         albu.RandomBrightness(p=1),
+        #         albu.RandomGamma(p=1),
+        #     ],
+        #     p=0.9,
+        # ),
 
         albu.OneOf(
             [
