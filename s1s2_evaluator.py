@@ -32,13 +32,16 @@ def image_padding(img, patchsize):
     img_pad = np.pad(img_pad0, ((0, 0), (padSize, padSize), (padSize, padSize)), mode='symmetric')
     return img_pad
 
-def inference(model, test_dir, test_id, satellites, patchsize=512, NUM_CLASS=2):
+def inference(model, test_dir, test_id, cfg):
+
+    patchsize = cfg.eval.patchsize
+    NUM_CLASS = len(list(cfg.data.CLASSES)
     # model.cpu()
     model.to("cuda")
     test_id = test_id.split("_")[0]
 
     input_tensors = []
-    for SAT in satellites:
+    for SAT in cfg.data.satellites:
         # if 'S1' != SAT: test_id = test_id.split("_")[0]
         pre_url = test_dir / SAT / "pre" / f"{test_id}.tif"
         post_url = test_dir / SAT / "post" / f"{test_id}.tif"
@@ -72,7 +75,6 @@ def inference(model, test_dir, test_id, satellites, patchsize=512, NUM_CLASS=2):
     pred_mask_pad = np.zeros((Height, Width))
     prob_mask_pad = np.zeros((NUM_CLASS, Height, Width))
 
-    mode = 'single_sensor_prepost'
     input_patchsize = 2 * patchsize
     padSize = int(patchsize/2) 
     for i in tqdm(range(0, Height - input_patchsize + 1, patchsize)):
@@ -80,7 +82,7 @@ def inference(model, test_dir, test_id, satellites, patchsize=512, NUM_CLASS=2):
             # print(i, i+input_patchsize, j, j+input_patchsize)
 
             ''' single sensor, bi-temporal images stacked, UNet '''
-            if 'single_sensor_prepost' == mode:
+            if 'single_sensor_prepost' == cfg.eval.mode:
                 sat_tensor =  input_tensors[0]
                 pre_patch = sat_tensor[0][..., i:i+input_patchsize, j:j+input_patchsize]
                 post_patch = sat_tensor[1][..., i:i+input_patchsize, j:j+input_patchsize]
@@ -92,7 +94,7 @@ def inference(model, test_dir, test_id, satellites, patchsize=512, NUM_CLASS=2):
                 # predPatch = torch.sigmoid(predPatch)
 
             ''' multiple sensors, post image, FuseUNet '''
-            if 'multi_sensor_post' == mode:
+            if 'multi_sensor_post' == cfg.eval.mode:
                 input_patchs = []
                 for sat_tensor in input_tensors:
                     # pre_patch = sat_tensor[0][..., i:i+input_patchsize, j:j+input_patchsize]
@@ -138,7 +140,7 @@ def gen_errMap(grouthTruth, preMap, save_url=False):
     return errMap
 
 
-def apply_model_on_event(model, test_id, output_dir, satellites):
+def apply_model_on_event(model, test_id, output_dir, cfg):
 
     output_dir.mkdir(exist_ok=True)
     data_dir = Path("D:\wildfire-s1s2-dataset-ak-tiles") / "test_images"
@@ -150,7 +152,7 @@ def apply_model_on_event(model, test_id, output_dir, satellites):
 
     print(f"------------------> {test_id} <-------------------")
 
-    predMask, probMask = inference(model, data_dir, test_id, satellites)
+    predMask, probMask = inference(model, data_dir, test_id, cfg)
 
     print(f"predMask shape: {predMask.shape}, unique: {np.unique(predMask)}")
     print(f"probMask: [{probMask.min()}, {probMask.max()}]")
@@ -187,7 +189,7 @@ def evaluate_model(cfg, SegModel):
     output_dir.mkdir(exist_ok=True)
 
     for test_id in test_id_list:
-        apply_model_on_event(model, test_id, output_dir, satellites=cfg.data.satellites)
+        apply_model_on_event(model, test_id, output_dir, cfg)
 
 
 

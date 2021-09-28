@@ -78,15 +78,6 @@ class SegModel(object):
         # specify data folder
         self.train_dir = Path(self.cfg.data.dir) / 'train'
         self.valid_dir = Path(self.cfg.data.dir) / 'test'
-        
-        # self.x_train_dir = train_dir / self.cfg.data.satellite
-        # self.y_train_dir = train_dir / "mask" / "poly"
-
-        # self.x_valid_dir = valid_dir / self.cfg.data.satellite
-        # self.y_valid_dir = valid_dir / 'mask' / "poly"
-
-        # self.x_test_dir = valid_dir / self.cfg.data.satellite
-        # self.y_test_dir = valid_dir / 'mask' / "poly"
         '''--------------------------------------------------'''
 
 
@@ -95,7 +86,7 @@ class SegModel(object):
         """ Data Preparation """
         train_dataset = Dataset(
             self.train_dir, 
-            self.cfg.data.satellites, 
+            self.cfg, 
             # augmentation=get_training_augmentation(), 
             # preprocessing=get_preprocessing(self.preprocessing_fn),
             classes=self.cfg.data.CLASSES,
@@ -103,7 +94,7 @@ class SegModel(object):
 
         valid_dataset = Dataset(
             self.valid_dir, 
-            self.cfg.data.satellites, 
+            self.cfg, 
             # augmentation=get_validation_augmentation(), 
             # preprocessing=get_preprocessing(self.preprocessing_fn),
             classes=self.cfg.data.CLASSES,

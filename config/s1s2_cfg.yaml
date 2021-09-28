@@ -1,39 +1,44 @@
 project:
-    name: S1S2
+    name: S1S2-snic
 
 data:
     name: s1s2
-    satellites: ['ALOS']
-    dir: D:\wildfire-s1s2-dataset-ak-tiles
+    satellites: ['S1']
+    prepost: ['pre', 'post']
+    dir: /cephyr/NOBACKUP/groups/snic2021-7-104/wildfire-s1s2-dataset-ak-tiles
+
     useDataWoCAug: False
     SEED: 42
-    CLASSES: ['unburn', 'burned']
-
     random_state: 42
 
-model:
-    ARCH: UNet
-    ACTIVATION: sigmoid
-    ENCODER: resnet18 # 'mobilenet_v2'
-    ENCODER_WEIGHTS: imagenet
-    INPUT_CHANNELS: 6
-
-    max_epoch: 20
-    batch_size: 32
-    learning_rate: 1e-4
-    weight_decay: 1e-4
-
+    CLASSES: ['unburn', 'burned']
     S1_INPUT_BANDS: ['ND', 'VH', 'VV']
     ALOS_INPUT_BANDS: ['ND', 'VH', 'VV']
     S2_INPUT_BANDS: ['B2', 'B3', 'B4', 'B8', 'B11', 'B12']
     REF_MASK: poly
-    
-    use_lr_scheduler: False
+
+    USE_PRE_IMG: True
+
+model:
+    ARCH: UNet #FuseUNet, UNet
+    ACTIVATION: sigmoid
+    ENCODER: resnet18 # 'mobilenet_v2'
+    ENCODER_WEIGHTS: imagenet
+
+    max_epoch: 100
+    batch_size: 64
+    learning_rate: 1e-4
+    weight_decay: 1e-4
+
+    use_lr_scheduler: True
     warmup_coef: 2
     
-    max_score: 0.1 # If IoU > max_score, start to save model
-
+    max_score: 0.1 # If IoU > max_score, save model
     verbose: True
+
+eval:
+    mode: single_sensor_prepost #single_sensor_prepost #multi_sensor_post
+    patchsize: 512
 
 experiment:
     note: ${data.satellites}

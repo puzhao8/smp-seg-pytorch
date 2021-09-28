@@ -18,6 +18,7 @@ model:
     ENCODER_WEIGHTS: imagenet
 
     S1_INPUT_BANDS: ['ND', 'VH', 'VV']
+    ALOS_INPUT_BANDS: ['ND', 'VH', 'VV']
     S2_INPUT_BANDS: ['B2', 'B3', 'B4', 'B8', 'B11', 'B12']
     REF_MASK: poly
 

@@ -107,11 +107,13 @@ class S1S2(BaseDataset):
     def __init__(
             self, 
             data_dir, 
-            satllites, 
+            cfg, 
             classes=None, 
             augmentation=None, 
             preprocessing=None,
     ):
+        self.cfg = cfg
+
         # images_dir
         data_dir = Path(data_dir)
         masks_dir = data_dir / "mask" / "poly"
@@ -129,7 +131,7 @@ class S1S2(BaseDataset):
             return pre_fps, post_fps, ids
 
         self.fps_dict = {}
-        for sat in satllites:
+        for sat in cfg.data.satellites:
             self.fps_dict[sat] = get_fps(sat)
         self.ids = self.fps_dict[sat][-1]
         
@@ -144,43 +146,40 @@ class S1S2(BaseDataset):
     
     def __getitem__(self, i):
         
-        # read data
-        preFlag = True
+        ''' read data '''
         image_list = []
         for sat in self.fps_dict.keys():
-            # read data
-            pre_fps = self.fps_dict[sat][0]
+
             post_fps = self.fps_dict[sat][1]
-            if preFlag: image_pre = tiff.imread(pre_fps[i])
             image_post = tiff.imread(post_fps[i])
+            if sat in ['S1', 'ALOS']: image_post = (np.clip(image_post, -30, 0) + 30) / 30
 
-            # S1 / ALOS
-            if sat in ['S1', 'ALOS']: 
-                if preFlag: image_pre = (np.clip(image_pre, -30, 0) + 30) / 30
-                image_post = (np.clip(image_post, -30, 0) + 30) / 30
-
-            # image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            if preFlag: 
+            if 'pre' in self.cfg.prepost:
+                pre_fps = self.fps_dict[sat][0]
+                image_pre = tiff.imread(pre_fps[i])
+                if sat in ['S1', 'ALOS']: image_pre = (np.clip(image_pre, -30, 0) + 30) / 30
                 image_list += [image_pre, image_post]
-            else: 
-                image = image_post
-                image_list.append(image)
+            else:
+                image_list.append(image_post)
 
-
+        ''' read mask '''
         mask = tiff.imread(self.masks_fps[i])
-        # poly: {0, 1}
-        masks = [(mask == v) for v in self.class_values] # 1~6
-        mask = np.stack(masks, axis=0).astype('float')
-        image_list.append(mask)
+        
+        if 'poly' == self.cfg.data.REF_MASK:
+            masks = [(mask == v) for v in self.class_values] # 1~6
+            mask = np.stack(masks, axis=0).astype('float')
+            image_list.append(mask)
 
         # apply augmentations
         if self.augmentation:
-            sample = self.augmentation(image=image, mask=mask)
-            image, mask = sample['image'], sample['mask']
+            # sample = self.augmentation(image=image, mask=mask)
+            # image, mask = sample['image'], sample['mask']
+
+            image_list = list(map(self.augmentation, image_list))
         
         # apply preprocessing
         if self.preprocessing:
-            sample = self.preprocessing(image=image, mask=mask)
+            sample = self.preprocessing(image=mask, mask=mask)
             image, mask = sample['image'], sample['mask']
             
         return tuple(image_list)
