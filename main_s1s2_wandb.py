@@ -87,7 +87,7 @@ class SegModel(object):
         train_dataset = Dataset(
             self.train_dir, 
             self.cfg, 
-            augmentation=get_training_augmentation(), 
+            # augmentation=get_training_augmentation(), 
             # preprocessing=get_preprocessing(self.preprocessing_fn),
             classes=self.cfg.data.CLASSES,
         )
@@ -95,7 +95,7 @@ class SegModel(object):
         valid_dataset = Dataset(
             self.valid_dir, 
             self.cfg, 
-            augmentation=get_validation_augmentation(), 
+            # augmentation=get_validation_augmentation(), 
             # preprocessing=get_preprocessing(self.preprocessing_fn),
             classes=self.cfg.data.CLASSES,
         )
@@ -140,7 +140,7 @@ class SegModel(object):
             
             # do something (save model, change lr, etc.)
             if valid_logs['iou_score'] > self.cfg.model.max_score:
-                max_score = valid_logs['iou_score']
+                self.cfg.model.max_score = valid_logs['iou_score']
                 torch.save(self.model, self.model_url)
                 # torch.save(self.model.state_dict(), self.model_url)
                 print('Model saved!')

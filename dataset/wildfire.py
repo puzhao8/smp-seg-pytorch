@@ -158,7 +158,12 @@ class S1S2(BaseDataset):
                 pre_fps = self.fps_dict[sat][0]
                 image_pre = tiff.imread(pre_fps[i])
                 if sat in ['S1', 'ALOS']: image_pre = (np.clip(image_pre, -30, 0) + 30) / 30
-                image_list += [image_pre, image_post]
+                
+                if self.cfg.data.stacking: # if stacking bi-temporal data
+                    stacked = np.concatenate((image_pre, image_post), axis=0) 
+                    image_list.append(stacked)
+                else:
+                    image_list += [image_pre, image_post]
             else:
                 image_list.append(image_post)
 
@@ -174,7 +179,6 @@ class S1S2(BaseDataset):
         if self.augmentation:
             # sample = self.augmentation(image=image, mask=mask)
             # image, mask = sample['image'], sample['mask']
-
             image_list = [self.augmentation(image=image.transpose(1,2,0))['image'].transpose(2,0,1) for image in image_list]
         
         # apply preprocessing

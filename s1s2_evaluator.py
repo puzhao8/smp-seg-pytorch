@@ -1,5 +1,6 @@
 from ntpath import join
 import os
+from cv2 import _InputArray_OPENGL_BUFFER
 import matplotlib.pyplot as plt
 from imageio import imread, imsave
 import torch
@@ -41,34 +42,28 @@ def inference(model, test_dir, test_id, cfg):
     test_id = test_id.split("_")[0]
 
     input_tensors = []
-    for SAT in cfg.data.satellites:
-        # if 'S1' != SAT: test_id = test_id.split("_")[0]
-        pre_url = test_dir / SAT / "pre" / f"{test_id}.tif"
+    for sat in cfg.data.satellites:
+        
         post_url = test_dir / SAT / "post" / f"{test_id}.tif"
-
-        pre_image = tiff.imread(pre_url) 
         post_image = tiff.imread(post_url) # C*H*W
-        # mask = tiff.imread(mask_url) 
-
-        if SAT in ['S1', 'ALOS']:
-            pre_image = (np.clip(pre_image, -30, 0) + 30) / 30
-            post_image = (np.clip(post_image, -30, 0) + 30) / 30
-
-        # if 'S2' == SAT: 
-        #     BANDS_INDEX = [0, 1, 2, 6, 8, 9]
-        #     pre_image = pre_image[:,:,BANDS_INDEX]
-        #     post_image = post_image[:,:,BANDS_INDEX]
-
-        # padding
-        pre_image_pad = image_padding(pre_image, patchsize)
+        if sat in ['S1', 'ALOS']: post_image = (np.clip(post_image, -30, 0) + 30) / 30
         post_image_pad = image_padding(post_image, patchsize)
 
         # img_preprocessed = self.preprocessing_fn(img_pad)
-        # img_preprocessed = img_pad
-        pre_image_tensor = torch.from_numpy(pre_image_pad).unsqueeze(0) # n * C * H * W
         post_image_tensor = torch.from_numpy(post_image_pad).unsqueeze(0) # n * C * H * W
+        
+        if 'pre' in cfg.data.prepost:
+            pre_url = test_dir / SAT / "pre" / f"{test_id}.tif"
+            pre_image = tiff.imread(pre_url) 
+            if sat in ['S1', 'ALOS']: pre_image = (np.clip(pre_image, -30, 0) + 30) / 30
 
-        input_tensors.append((pre_image_tensor, post_image_tensor))
+            pre_image_pad = image_padding(pre_image, patchsize)
+            pre_image_tensor = torch.from_numpy(pre_image_pad).unsqueeze(0) # n * C * H * W
+        
+            input_tensors.append((pre_image_tensor, post_image_tensor))
+
+        else:
+            input_tensors.append(post_image_tensor)
 
     C, H, W = post_image.shape
     _, _, Height, Width = input_tensors[0][0].shape
@@ -81,29 +76,27 @@ def inference(model, test_dir, test_id, cfg):
         for j in range(0, Width - input_patchsize + 1, patchsize):
             # print(i, i+input_patchsize, j, j+input_patchsize)
 
-            ''' single sensor, bi-temporal images stacked, UNet '''
-            if 'single_sensor_prepost' == cfg.eval.mode:
-                sat_tensor =  input_tensors[0]
-                pre_patch = sat_tensor[0][..., i:i+input_patchsize, j:j+input_patchsize]
-                post_patch = sat_tensor[1][..., i:i+input_patchsize, j:j+input_patchsize]
+            ''' ------------> tile input data <---------- '''
+            input_patchs = []
+            for sat_tensor in input_tensors:
+                post_patch = (sat_tensor[1][..., i:i+input_patchsize, j:j+input_patchsize]).type(torch.cuda.FloatTensor)
+                if 'pre' in cfg.data.prepost: 
+                    pre_patch = (sat_tensor[0][..., i:i+input_patchsize, j:j+input_patchsize]).type(torch.cuda.FloatTensor)
+                    
+                    if cfg.data.stacking: 
+                        inputPatch = torch.cat([pre_patch, post_patch], dim=1) # stacked inputs
+                        input_patchs.append(inputPatch)
+                    else:
+                        input_patchs += [pre_patch, post_patch]
+                else:
+                    input_patchs.append(post_patch)
 
-                inputPatch = torch.cat([pre_patch, post_patch], dim=1) # stacked inputs
-                inputPatch = inputPatch.type(torch.cuda.FloatTensor)
-
-                predPatch = model.forward(inputPatch)
-                # predPatch = torch.sigmoid(predPatch)
-
-            ''' multiple sensors, post image, FuseUNet '''
-            if 'multi_sensor_post' == cfg.eval.mode:
-                input_patchs = []
-                for sat_tensor in input_tensors:
-                    # pre_patch = sat_tensor[0][..., i:i+input_patchsize, j:j+input_patchsize]
-                    post_patch = sat_tensor[1][..., i:i+input_patchsize, j:j+input_patchsize]
-
-                    inputPatch = post_patch.type(torch.cuda.FloatTensor)
-                    input_patchs.append(inputPatch)
-
+            ''' ------------> apply model <--------------- '''
+            if 'Fuse' in cfg.model.ARCH:
                 predPatch, _ = model.forward(input_patchs)
+            else:
+                predPatch = model.forward(inputPatch)
+            ''' ------------------------------------------ '''
 
             predPatch = predPatch.squeeze().cpu().detach().numpy()#.round()
             predLabel = np.argmax(predPatch, axis=0).squeeze()
@@ -143,8 +136,7 @@ def gen_errMap(grouthTruth, preMap, save_url=False):
 def apply_model_on_event(model, test_id, output_dir, cfg):
 
     output_dir.mkdir(exist_ok=True)
-    data_dir = Path("D:\wildfire-s1s2-dataset-ak-tiles") / "test_images"
-
+    data_dir = Path(cfg.data.dir) / "test_images"
 
     orbKeyLen = len(test_id.split("_")[-1]) + 1 
     event = test_id[:(len(test_id)-orbKeyLen)]
