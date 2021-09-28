@@ -88,14 +88,6 @@ class SegModel(object):
         self.train_dir = Path(self.cfg.data.dir) / 'train'
         self.valid_dir = Path(self.cfg.data.dir) / 'test'
         
-        # self.x_train_dir = train_dir / self.cfg.data.satellite
-        # self.y_train_dir = train_dir / "mask" / "poly"
-
-        # self.x_valid_dir = valid_dir / self.cfg.data.satellite
-        # self.y_valid_dir = valid_dir / 'mask' / "poly"
-
-        # self.x_test_dir = valid_dir / self.cfg.data.satellite
-        # self.y_test_dir = valid_dir / 'mask' / "poly"
         '''--------------------------------------------------'''
 
 
@@ -104,7 +96,7 @@ class SegModel(object):
         """ Data Preparation """
         train_dataset = Dataset(
             self.train_dir, 
-            self.cfg.data.satellites, 
+            self.cfg, 
             # augmentation=get_training_augmentation(), 
             # preprocessing=get_preprocessing(self.preprocessing_fn),
             classes=self.cfg.data.CLASSES,
@@ -112,7 +104,7 @@ class SegModel(object):
 
         valid_dataset = Dataset(
             self.valid_dir, 
-            self.cfg.data.satellites,
+            self.cfg,
             # augmentation=get_validation_augmentation(), 
             # preprocessing=get_preprocessing(self.preprocessing_fn),
             classes=self.cfg.data.CLASSES,
@@ -199,7 +191,7 @@ class SegModel(object):
         #     dataLoader_woCAug = iter(self.dataloaders['Train_woCAug'])
 
         with tqdm(iter(self.dataloaders[phase]), desc=phase, file=sys.stdout, disable=not self.cfg.model.verbose) as iterator:
-            for (s1, s2, y) in iterator:
+            for (x1, x2, y) in iterator:
                 # print(x.shape)
                 # print(y.shape)
 
@@ -208,13 +200,20 @@ class SegModel(object):
                 #     x = torch.cat((x0, x), dim=0)
                 #     y = torch.cat((y0, y), dim=0)
 
-                s1, s2, y = s1.to(self.DEVICE), s2.to(self.DEVICE), y.to(self.DEVICE)
+                x1, x2, y = x1.to(self.DEVICE), x2.to(self.DEVICE), y.to(self.DEVICE)
                 self.optimizer.zero_grad()
 
-                y_pred, decoder_out = self.model.forward((s1, s2))
+                if 'Fuse' in self.cfg.model.ARCH:
+                    y_pred, decoder_out = self.model.forward((x1, x2))
+                    cross_domain_loss = mse_loss(decoder_out[0], decoder_out[1])
 
+                else: 
+                    y_pred = self.model.forward((x1, x2))
+                    cross_domain_loss = 0
+
+    
                 dice_loss_ =  diceLoss(y_pred, y)
-                cross_domain_loss = mse_loss(decoder_out[0], decoder_out[1])
+                
                 # focal_loss_ = self.cfg.alpha * focal_loss(y_pred, y)
                 # tv_loss_ = 1e-5 * self.cfg.beta * torch.mean(tv_loss(y_pred))
 
@@ -272,7 +271,7 @@ def set_random_seed(seed, deterministic=False):
         torch.backends.cudnn.benchmark = False
 
 
-@hydra.main(config_path="./config", config_name="s1s2_fusion")
+@hydra.main(config_path="./config", config_name="s1s2_cfg")
 def run_app(cfg : DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
 

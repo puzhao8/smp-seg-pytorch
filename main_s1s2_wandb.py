@@ -181,11 +181,7 @@ class SegModel(object):
         #     dataLoader_woCAug = iter(self.dataloaders['Train_woCAug'])
 
         with tqdm(iter(self.dataloaders[phase]), desc=phase, file=sys.stdout, disable=not self.cfg.model.verbose) as iterator:
-            for (x1, x2, y) in iterator:
-                x = torch.cat((x1, x2), dim=1)
-
-                # print(x.shape)
-                # print(y.shape)
+            for (x, y) in iterator:
 
                 # if ('Train' in phase) and (self.cfg.useDataWoCAug):
                 #     x0, y0 = next(dataLoader_woCAug)  
