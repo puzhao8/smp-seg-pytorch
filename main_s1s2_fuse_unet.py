@@ -74,7 +74,9 @@ class SegModel(object):
         self.DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
         self.model = init_model(cfg)
-        self.model_url = str(self.project_dir / "outputs" / "best_model.pth")
+        # self.model_url = str(self.project_dir / "outputs" / "best_model.pth")
+        self.rundir = self.project_dir / self.cfg.experiment.output
+        self.model_url = str( self.rundir / "model.pth")
 
         self.preprocessing_fn = \
             smp.encoders.get_preprocessing_fn(cfg.model.ENCODER, cfg.model.ENCODER_WEIGHTS)
@@ -271,7 +273,7 @@ def set_random_seed(seed, deterministic=False):
         torch.backends.cudnn.benchmark = False
 
 
-@hydra.main(config_path="./config", config_name="s1s2_cfg")
+@hydra.main(config_path="./config", config_name="s1s2_fuse_unet")
 def run_app(cfg : DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
 
@@ -282,12 +284,12 @@ def run_app(cfg : DictConfig) -> None:
     set_random_seed(cfg.data.SEED)
 
     # from experiments.seg_model import SegModel
-    model = SegModel(cfg)
-    model.run()
+    mySegModel = SegModel(cfg)
+    mySegModel.run()
 
     # evaluation
     from s1s2_evaluator import evaluate_model
-    evaluate_model(cfg, SegModel=model)
+    evaluate_model(cfg, mySegModel.model_url, mySegModel.rundir / "errMap")
     
     wandb.finish()
 

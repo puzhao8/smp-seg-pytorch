@@ -4,9 +4,10 @@
 #SBATCH --gpus-per-node=V100:1 
 #SBATCH -t 7-00:00:00
 #SBATCH --job-name s1s2-unet
-#SBATCH --output s1s2-unet.out
+#SBATCH --output s1s2-fuse-unet.out
 
 echo "start"
+
 # git clone -b multi-res-label https://github.com/puzhao89/temporal-consistency.git $TMPDIR/temporal-consistency
 
 # cd $TMPDIR/temporal-consistency
@@ -25,7 +26,7 @@ echo "start"
 # done &
 # LOOPPID=$!
 
-singularity exec --nv /cephyr/users/puzhao/Alvis/PyTorch_v1.7.0-py3.sif python main_s1s2_wandb.py 
+singularity exec --nv /cephyr/users/puzhao/Alvis/PyTorch_v1.7.0-py3.sif python main_s1s2_fuse_unet.py 
 
 # rsync -a $TMPDIR/temporal-consistency/outputs/* $exp_dir
 # kill $LOOPPID

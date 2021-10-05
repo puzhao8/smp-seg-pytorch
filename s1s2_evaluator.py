@@ -12,8 +12,8 @@ import smp
 
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap, LinearSegmentedColormap
-from utils.GeoTIFF import GeoTIFF
-geotiff = GeoTIFF()
+# from utils.GeoTIFF import GeoTIFF
+# geotiff = GeoTIFF()
 
 import wandb
 
@@ -92,7 +92,7 @@ def inference(model, test_dir, test_id, cfg):
                     input_patchs.append(post_patch)
 
             ''' ------------> apply model <--------------- '''
-            if 'Fuse' in cfg.model.ARCH:
+            if 'FuseUNet' in cfg.model.ARCH:
                 predPatch, _ = model.forward(input_patchs)
             else:
                 predPatch = model.forward(inputPatch)
@@ -112,14 +112,14 @@ def inference(model, test_dir, test_id, cfg):
 def gen_errMap(grouthTruth, preMap, save_url=False):
     errMap = np.zeros(preMap.shape)
     # errMap[np.where((OptREF==0) & (SARREF==0))] = 0
-    errMap[np.where((grouthTruth==1) & (preMap==1))] = 1.0 # TP
-    errMap[np.where((grouthTruth==1) & (preMap==0))] = 2.0 # FN, green
-    errMap[np.where((grouthTruth==0) & (preMap==1))] = 3.0 # FP
+    errMap[np.where((grouthTruth==1) & (preMap==1))] = 1.0 # TP, dark red
+    errMap[np.where((grouthTruth==1) & (preMap==0))] = 2.0 # FN, light red
+    errMap[np.where((grouthTruth==0) & (preMap==1))] = 3.0 # FP, green
 
-    num_color = len(np.unique(errMap))
+    num_color = max(max(np.unique(errMap)), 1)
     # color_tuple = ([1,1,1], [0.6,0,0], [0,0.8,0], [1, 0.6, 0.6])
     color_tuple = ([1,1,1], [0.6,0,0], [1, 0.6, 0.6], [0,0.8,0])
-    my_cmap = ListedColormap(color_tuple[:num_color])
+    my_cmap = ListedColormap(color_tuple[:int(num_color)])
 
     # plt.figure(figsize=(15, 15))
     # plt.imshow(errMap, cmap=my_cmap)
@@ -135,6 +135,7 @@ def gen_errMap(grouthTruth, preMap, save_url=False):
 
 def apply_model_on_event(model, test_id, output_dir, cfg):
 
+    output_dir = Path(output_dir)
     output_dir.mkdir(exist_ok=True)
     data_dir = Path(cfg.data.dir) / "test_images"
 
@@ -154,11 +155,13 @@ def apply_model_on_event(model, test_id, output_dir, cfg):
     # mtbs_palette = [[0,100/255,0], [127/255,1,212/255], [1,1,0], [1,0,0], [127/255,1,0], [1,1,1]]
 
     plt.imsave(output_dir / f"{test_id}_predLabel.png", predMask, cmap='gray', vmin=0, vmax=1)
+    plt.imsave(output_dir / f"{test_id}_probMap.png", predMask, cmap='gray', vmin=0, vmax=1)
 
         # read and save true labels
     if os.path.isfile(data_dir / "mask" / "poly" / f"{event}.tif"):
-        _, _, trueLabel = geotiff.read(data_dir / "mask" / "poly" / f"{event}.tif")
-        geotiff.save(output_dir / f"{test_id}_predLabel.tif", predMask[np.newaxis,]) 
+        trueLabel = tiff.imread(data_dir / "mask" / "poly" / f"{event}.tif")
+        # _, _, trueLabel = geotiff.read(data_dir / "mask" / "poly" / f"{event}.tif")
+        # geotiff.save(output_dir / f"{test_id}_predLabel.tif", predMask[np.newaxis,]) 
 
         trueLabel = trueLabel.squeeze()
         # print(trueLabel.shape, predMask.shape)
@@ -168,7 +171,7 @@ def apply_model_on_event(model, test_id, output_dir, cfg):
 
 
 
-def evaluate_model(cfg, SegModel):
+def evaluate_model(cfg, model_url, output_dir):
 
     import json
     json_url = Path(cfg.data.dir) / "train_test.json"
@@ -176,8 +179,8 @@ def evaluate_model(cfg, SegModel):
         split_dict = json.load(json_file)
     test_id_list = split_dict['test']['sarname']
 
-    model = torch.load(SegModel.model_url)
-    output_dir = Path(SegModel.project_dir) / 'outputs'
+    model = torch.load(model_url)
+    # output_dir = Path(SegModel.project_dir) / 'outputs'
     output_dir.mkdir(exist_ok=True)
 
     for test_id in test_id_list:
@@ -189,7 +192,7 @@ import hydra
 import wandb
 from omegaconf import DictConfig, OmegaConf
 
-@hydra.main(config_path="./config", config_name="s1s2_fusion")
+@hydra.main(config_path="./config", config_name="s1s2_cfg")
 def run_app(cfg : DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
 
@@ -209,6 +212,10 @@ def run_app(cfg : DictConfig) -> None:
 
     # for test_id in test_id_list:
     #     apply_model_on_event(model, test_id, output_dir, satellites=['S1', 'S2'])
+
+    model_url = "/cephyr/NOBACKUP/groups/snic2021-7-104/puzhao-snic-500G/smp-seg-pytorch/outputs/best_model.pth"
+    output_dir = Path("/cephyr/NOBACKUP/groups/snic2021-7-104/puzhao-snic-500G/smp-seg-pytorch/outputs") / "errMap"
+    evaluate_model(cfg, model_url, output_dir)
     
     #########################################################################
     wandb.finish()

@@ -66,7 +66,10 @@ class SegModel(object):
         self.DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
         self.model = init_model(cfg)
-        self.model_url = str(self.project_dir / "outputs" / "best_model.pth")
+        # self.model_url = str(self.project_dir / "outputs" / "best_model.pth")
+        self.rundir = self.project_dir / self.cfg.experiment.output
+        self.model_url = str( self.rundir / "model.pth")
+
 
         self.preprocessing_fn = \
             smp.encoders.get_preprocessing_fn(cfg.model.ENCODER, cfg.model.ENCODER_WEIGHTS)
@@ -133,14 +136,15 @@ class SegModel(object):
         self.history_logs['valid'] = []
 
         # --------------------------------- Train -------------------------------------------
+        max_score = self.cfg.model.max_score
         for epoch in range(0, self.cfg.model.max_epoch):
             epoch = epoch + 1
             print(f"\n==> train epoch: {epoch}/{self.cfg.model.max_epoch}")
             valid_logs = self.train_one_epoch(epoch)
             
             # do something (save model, change lr, etc.)
-            if valid_logs['iou_score'] > self.cfg.model.max_score:
-                self.cfg.model.max_score = valid_logs['iou_score']
+            if valid_logs['iou_score'] > max_score:
+                max_score = valid_logs['iou_score']
                 torch.save(self.model, self.model_url)
                 # torch.save(self.model.state_dict(), self.model_url)
                 print('Model saved!')
@@ -261,12 +265,12 @@ def run_app(cfg : DictConfig) -> None:
     set_random_seed(cfg.data.SEED)
 
     # from experiments.seg_model import SegModel
-    model = SegModel(cfg)
-    model.run()
+    mySegModel = SegModel(cfg)
+    mySegModel.run()
 
     # evaluation
     from s1s2_evaluator import evaluate_model
-    evaluate_model(cfg, SegModel=model)
+    evaluate_model(cfg, mySegModel.model_url, mySegModel.rundir / "errMap")
     
     wandb.finish()
 
