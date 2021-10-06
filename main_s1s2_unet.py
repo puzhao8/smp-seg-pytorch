@@ -258,7 +258,8 @@ def set_random_seed(seed, deterministic=False):
 def run_app(cfg : DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
 
-    wandb.init(config=cfg, project=cfg.project.name, name=cfg.experiment.name)
+    # wandb.init(config=cfg, project=cfg.project.name, name=cfg.experiment.name)
+    wandb.init(config=cfg, project=cfg.project.name, entity=cfg.project.entity, name=cfg.experiment.name)
     # project_dir = Path(hydra.utils.get_original_cwd())
     
     # set randome seed

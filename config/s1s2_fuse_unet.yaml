@@ -1,5 +1,6 @@
 project:
-    name: S1S2-snic
+    name: s1s2-snic
+    entity: wildfire
 
 data:
     name: s1s2
