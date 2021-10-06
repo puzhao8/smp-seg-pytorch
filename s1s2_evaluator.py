@@ -116,10 +116,10 @@ def gen_errMap(grouthTruth, preMap, save_url=False):
     errMap[np.where((grouthTruth==1) & (preMap==0))] = 2.0 # FN, light red
     errMap[np.where((grouthTruth==0) & (preMap==1))] = 3.0 # FP, green
 
-    num_color = max(max(np.unique(errMap)), 1)
+    num_color = int(1 + max(np.unique(errMap)))
     # color_tuple = ([1,1,1], [0.6,0,0], [0,0.8,0], [1, 0.6, 0.6])
     color_tuple = ([1,1,1], [0.6,0,0], [1, 0.6, 0.6], [0,0.8,0])
-    my_cmap = ListedColormap(color_tuple[:int(num_color)])
+    my_cmap = ListedColormap(color_tuple[:num_color])
 
     # plt.figure(figsize=(15, 15))
     # plt.imshow(errMap, cmap=my_cmap)

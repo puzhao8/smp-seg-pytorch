@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -A SNIC2021-7-104
 #SBATCH -N 1
-#SBATCH --gpus-per-node=T4:1 
+#SBATCH --gpus-per-node=V100:1 
 #SBATCH -t 7-00:00:00
 #SBATCH --job-name s1s2-unet
 #SBATCH --output s1s2-unet.out
