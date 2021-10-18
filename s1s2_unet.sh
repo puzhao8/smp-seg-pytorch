@@ -32,6 +32,6 @@ singularity exec --nv /cephyr/users/puzhao/Alvis/PyTorch_v1.7.0-py3.sif python m
 # kill $LOOPPID
 
 rm -rf $SLURM_SUBMIT_DIR/*.log
-rm -rf $SLURM_SUBMIT_DIR/*.out
+# rm -rf $SLURM_SUBMIT_DIR/*.out
 
 echo "finish"

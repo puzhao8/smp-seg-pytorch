@@ -10,14 +10,21 @@ data:
     dir: /cephyr/NOBACKUP/groups/snic2021-7-104/wildfire-s1s2-dataset-ak-tiles
     # dir: D:\wildfire-s1s2-dataset-ak-tiles
 
+    ALL_BANDS:
+        S1: ['ND', 'VH', 'VV']
+        ALOS: ['ND', 'VH', 'VV']
+        S2: ['B2', 'B3', 'B4', 'B8', 'B11', 'B12']
+
+    INPUT_BANDS:
+        S1: ['ND', 'VH', 'VV']
+        ALOS: ['ND', 'VH', 'VV']
+        S2: ['B8', 'B11', 'B12']
+
     useDataWoCAug: False
     SEED: 42
     random_state: 42
 
     CLASSES: ['unburn', 'burned']
-    S1_INPUT_BANDS: ['ND', 'VH', 'VV']
-    ALOS_INPUT_BANDS: ['ND', 'VH', 'VV']
-    S2_INPUT_BANDS: ['B2', 'B3', 'B4', 'B8', 'B11', 'B12']
     REF_MASK: poly
 
     USE_PRE_IMG: True
@@ -32,7 +39,7 @@ model:
     batch_size: 64
     learning_rate: 1e-4
     weight_decay: 1e-4
-    cross_domain_coef: 0.02
+    cross_domain_coef: 0
 
     use_lr_scheduler: True
     warmup_coef: 2

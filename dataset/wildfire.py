@@ -2,6 +2,7 @@ import os, cv2
 from pathlib import Path
 
 import numpy as np
+from test import INPUT_BANDS
 import tifffile as tiff 
 
 from torch.utils.data import DataLoader
@@ -113,6 +114,8 @@ class S1S2(BaseDataset):
             preprocessing=None,
     ):
         self.cfg = cfg
+        self.band_index_dict = self.get_band_index_dict()
+        print(self.band_index_dict)
 
         # images_dir
         data_dir = Path(data_dir)
@@ -153,11 +156,13 @@ class S1S2(BaseDataset):
             post_fps = self.fps_dict[sat][1]
             image_post = tiff.imread(post_fps[i]) # C*H*W
             if sat in ['S1', 'ALOS']: image_post = (np.clip(image_post, -30, 0) + 30) / 30
+            image_post = image_post[self.band_index_dict[sat],] # select bands
 
             if 'pre' in self.cfg.data.prepost:
                 pre_fps = self.fps_dict[sat][0]
                 image_pre = tiff.imread(pre_fps[i])
                 if sat in ['S1', 'ALOS']: image_pre = (np.clip(image_pre, -30, 0) + 30) / 30
+                image_pre = image_pre[self.band_index_dict[sat],] # select bands
                 
                 if self.cfg.data.stacking: # if stacking bi-temporal data
                     stacked = np.concatenate((image_pre, image_post), axis=0) 
@@ -191,3 +196,22 @@ class S1S2(BaseDataset):
         
     def __len__(self):
         return len(self.ids)
+
+    def get_band_index_dict(self):
+        ALL_BANDS = self.cfg.data.ALL_BANDS
+        INPUT_BANDS = self.cfg.data.INPUT_BANDS
+
+        def get_band_index(sat):
+            all_bands = list(ALL_BANDS[sat])
+            input_bands = list(INPUT_BANDS[sat])
+
+            band_index = []
+            for band in input_bands:
+                band_index.append(all_bands.index(band))
+            return band_index
+
+        band_index_dict = {}
+        for sat in ['S1', 'ALOS', 'S2']:
+            band_index_dict[sat] = get_band_index(sat)
+        
+        return band_index_dict

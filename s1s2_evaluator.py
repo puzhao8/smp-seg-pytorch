@@ -9,6 +9,7 @@ from tqdm import tqdm
 from pathlib import Path
 import tifffile as tiff
 import smp
+from easydict import EasyDict as edict
 
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap, LinearSegmentedColormap
@@ -33,19 +34,39 @@ def image_padding(img, patchsize):
     img_pad = np.pad(img_pad0, ((0, 0), (padSize, padSize), (padSize, padSize)), mode='symmetric')
     return img_pad
 
+def get_band_index_dict(cfg):
+    ALL_BANDS = cfg.data.ALL_BANDS
+    INPUT_BANDS = cfg.data.INPUT_BANDS
+
+    def get_band_index(sat):
+        all_bands = list(ALL_BANDS[sat])
+        input_bands = list(INPUT_BANDS[sat])
+
+        band_index = []
+        for band in input_bands:
+            band_index.append(all_bands.index(band))
+        return band_index
+
+    band_index_dict = {}
+    for sat in ['S1', 'ALOS', 'S2']:
+        band_index_dict[sat] = get_band_index(sat)
+    
+    return band_index_dict
+
 def inference(model, test_dir, test_id, cfg):
 
     patchsize = cfg.eval.patchsize
     NUM_CLASS = len(list(cfg.data.CLASSES))
     # model.cpu()
     model.to("cuda")
-    test_id = test_id.split("_")[0]
 
     input_tensors = []
     for sat in cfg.data.satellites:
         
         post_url = test_dir / sat / "post" / f"{test_id}.tif"
         post_image = tiff.imread(post_url) # C*H*W
+        post_image = post_image[cfg.band_index_dict[sat],] # select bands
+
         if sat in ['S1', 'ALOS']: post_image = (np.clip(post_image, -30, 0) + 30) / 30
         post_image_pad = image_padding(post_image, patchsize)
 
@@ -54,7 +75,9 @@ def inference(model, test_dir, test_id, cfg):
         
         if 'pre' in cfg.data.prepost:
             pre_url = test_dir / sat / "pre" / f"{test_id}.tif"
-            pre_image = tiff.imread(pre_url) 
+            pre_image = tiff.imread(pre_url)
+            pre_image = pre_image[cfg.band_index_dict[sat],] # select bands 
+
             if sat in ['S1', 'ALOS']: pre_image = (np.clip(pre_image, -30, 0) + 30) / 30
 
             pre_image_pad = image_padding(pre_image, patchsize)
@@ -140,12 +163,12 @@ def apply_model_on_event(model, test_id, output_dir, cfg):
     data_dir = Path(cfg.data.dir) / "test_images"
 
     orbKeyLen = len(test_id.split("_")[-1]) + 1 
-    event = test_id[:(len(test_id)-orbKeyLen)]
+    event = test_id[:-orbKeyLen]
     print(event)
 
     print(f"------------------> {test_id} <-------------------")
 
-    predMask, probMask = inference(model, data_dir, test_id, cfg)
+    predMask, probMask = inference(model, data_dir, event, cfg)
 
     print(f"predMask shape: {predMask.shape}, unique: {np.unique(predMask)}")
     print(f"probMask: [{probMask.min()}, {probMask.max()}]")
@@ -167,7 +190,7 @@ def apply_model_on_event(model, test_id, output_dir, cfg):
         # print(trueLabel.shape, predMask.shape)
 
         plt.imsave(output_dir / f"{test_id}_trueLabel.png", trueLabel, cmap='gray', vmin=0, vmax=1)
-        gen_errMap(trueLabel, predMask, save_url=output_dir / f"{test_id}_errMap.png")
+        gen_errMap(trueLabel, predMask, save_url=output_dir / f"{test_id}.png")
 
 
 
@@ -183,6 +206,10 @@ def evaluate_model(cfg, model_url, output_dir):
     # output_dir = Path(SegModel.project_dir) / 'outputs'
     output_dir.mkdir(exist_ok=True)
 
+    band_index_dict = get_band_index_dict(cfg)
+    cfg = edict(cfg)
+    cfg.update({"band_index_dict": band_index_dict})
+    
     for test_id in test_id_list:
         apply_model_on_event(model, test_id, output_dir, cfg)
 
@@ -196,7 +223,9 @@ from omegaconf import DictConfig, OmegaConf
 def run_app(cfg : DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
 
-    wandb.init(config=cfg, project=cfg.project.name, name=cfg.experiment.name)
+    # wandb.init(config=cfg, project=cfg.project.name, name=cfg.experiment.name)
+    wandb.init(config=cfg, project=cfg.project.name, entity=cfg.project.entity, name=cfg.experiment.name)
+
     # project_dir = Path(hydra.utils.get_original_cwd())
     #########################################################################
 
@@ -213,7 +242,7 @@ def run_app(cfg : DictConfig) -> None:
     # for test_id in test_id_list:
     #     apply_model_on_event(model, test_id, output_dir, satellites=['S1', 'S2'])
 
-    model_url = "/cephyr/NOBACKUP/groups/snic2021-7-104/puzhao-snic-500G/smp-seg-pytorch/outputs/best_model.pth"
+    model_url = "/cephyr/NOBACKUP/groups/snic2021-7-104/puzhao-snic-500G/smp-seg-pytorch/outputs/model.pth"
     output_dir = Path("/cephyr/NOBACKUP/groups/snic2021-7-104/puzhao-snic-500G/smp-seg-pytorch/outputs") / "errMap"
     evaluate_model(cfg, model_url, output_dir)
     

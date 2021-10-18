@@ -26,7 +26,7 @@ echo "start"
 # done &
 # LOOPPID=$!
 
-singularity exec --nv /cephyr/users/puzhao/Alvis/PyTorch_v1.7.0-py3.sif python main_s1s2_fuse_unet.py 
+singularity exec --nv /cephyr/users/puzhao/Alvis/PyTorch_v1.7.0-py3.sif python3 main_s1s2_fuse_unet.py 
 
 # rsync -a $TMPDIR/temporal-consistency/outputs/* $exp_dir
 # kill $LOOPPID

@@ -1,25 +1,34 @@
 project:
-    name: s1s2-snic
+    name: s1s2-snic-test
     entity: wildfire
 
 data:
+    # dir: /cephyr/NOBACKUP/groups/snic2021-7-104/wildfire-s1s2-dataset-ak-tiles
+    dir: /cephyr/NOBACKUP/groups/snic2021-7-104/wildfire-s1s2-dataset-ca-tiles
+    # dir: D:\wildfire-s1s2-dataset-ak-tiles
+
     name: s1s2
-    satellites: ['S1']
+    satellites: ['S2']
     prepost: ['pre', 'post']
     stacking: True
-    dir: /cephyr/NOBACKUP/groups/snic2021-7-104/wildfire-s1s2-dataset-ak-tiles
-    # dir: D:\wildfire-s1s2-dataset-ak-tiles
+
+    ALL_BANDS:
+        S1: ['ND', 'VH', 'VV']
+        ALOS: ['ND', 'VH', 'VV']
+        S2: ['B2', 'B3', 'B4', 'B8', 'B11', 'B12']
+
+    INPUT_BANDS:
+        S1: ['ND', 'VH', 'VV']
+        ALOS: ['ND', 'VH', 'VV']
+        S2: ['B8', 'B11', 'B12']
 
     useDataWoCAug: False
     SEED: 42
     random_state: 42
 
     CLASSES: ['unburn', 'burned']
-    S1_INPUT_BANDS: ['ND', 'VH', 'VV']
-    ALOS_INPUT_BANDS: ['ND', 'VH', 'VV']
-    S2_INPUT_BANDS: ['B2', 'B3', 'B4', 'B8', 'B11', 'B12']
     REF_MASK: poly
-
+    
     USE_PRE_IMG: True
 
 model:

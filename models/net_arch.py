@@ -3,10 +3,10 @@ import smp
 def init_model(cfg):
 
     INPUT_CHANNELS_DICT = {}
-    INPUT_CHANNELS_DICT['S1'] = len(list(cfg.data.S1_INPUT_BANDS))
-    INPUT_CHANNELS_DICT['S2'] = len(list(cfg.data.S2_INPUT_BANDS))
-    INPUT_CHANNELS_DICT['ALOS'] = len(list(cfg.data.ALOS_INPUT_BANDS))
+    for sat in cfg.data.satellites:
+        INPUT_CHANNELS_DICT[sat] = len(list(cfg.data.INPUT_BANDS[sat]))
 
+    # single sensor
     if cfg.data.stacking and (1==len(cfg.data.satellites)): 
         INPUT_CHANNELS = len(cfg.data.prepost) * INPUT_CHANNELS_DICT[cfg.data.satellites[0]]
     

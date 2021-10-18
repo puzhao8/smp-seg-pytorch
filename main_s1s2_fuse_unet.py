@@ -112,7 +112,7 @@ class SegModel(object):
             classes=self.cfg.data.CLASSES,
         )
 
-        train_loader = DataLoader(train_dataset, batch_size=self.cfg.model.batch_size, shuffle=True, num_workers=12)
+        train_loader = DataLoader(train_dataset, batch_size=self.cfg.model.batch_size, shuffle=True, num_workers=4)
         valid_loader = DataLoader(valid_dataset, batch_size=self.cfg.model.batch_size, shuffle=False, num_workers=4)
 
         dataloaders = { 
@@ -205,7 +205,7 @@ class SegModel(object):
                 x1, x2, y = x1.to(self.DEVICE), x2.to(self.DEVICE), y.to(self.DEVICE)
                 self.optimizer.zero_grad()
 
-                if 'Fuse' in self.cfg.model.ARCH:
+                if 'FuseUNet' in self.cfg.model.ARCH:
                     y_pred, decoder_out = self.model.forward((x1, x2))
                     cross_domain_loss = mse_loss(decoder_out[0], decoder_out[1])
 
