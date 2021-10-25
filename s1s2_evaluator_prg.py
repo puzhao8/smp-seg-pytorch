@@ -1,5 +1,5 @@
 from ntpath import join
-import os
+import os, glob
 from cv2 import _InputArray_OPENGL_BUFFER
 import matplotlib.pyplot as plt
 from imageio import imread, imsave
@@ -64,7 +64,12 @@ def inference(model, test_dir, test_id, cfg):
     for sat in cfg.data.satellites:
         
         post_url = test_dir / sat / "post" / f"{test_id}.tif"
-        post_image = tiff.imread(post_url) # C*H*W
+        orbKey = test_id.split("_")[-1]
+
+        post_image = tiff.imread(post_url).transpose(2,0,1) # C*H*W
+        post_image = np.nan_to_num(post_image, 0)
+        # print(f"post: {post_image.shape}")
+        # print(post_image.min(), post_image.max())
         post_image = post_image[cfg.band_index_dict[sat],] # select bands
 
         if sat in ['S1', 'ALOS']: post_image = (np.clip(post_image, -30, 0) + 30) / 30
@@ -74,8 +79,13 @@ def inference(model, test_dir, test_id, cfg):
         post_image_tensor = torch.from_numpy(post_image_pad).unsqueeze(0) # n * C * H * W
         
         if 'pre' in cfg.data.prepost:
-            pre_url = test_dir / sat / "pre" / f"{test_id}.tif"
-            pre_image = tiff.imread(pre_url)
+            pre_folder = test_dir / sat / "pre"
+            # pre_url = pre_folder / os.listdir(pre_folder)[0]
+            pre_url = glob.glob(f"{str(pre_folder)}/*{orbKey}.tif")[0]
+            print("pre_image: ", os.path.split(pre_url)[-1])
+
+            pre_image = tiff.imread(pre_url).transpose(2,0,1)
+            pre_image = np.nan_to_num(pre_image, 0)
             pre_image = pre_image[cfg.band_index_dict[sat],] # select bands 
 
             if sat in ['S1', 'ALOS']: pre_image = (np.clip(pre_image, -30, 0) + 30) / 30
@@ -159,10 +169,11 @@ def gen_errMap(grouthTruth, preMap, save_url=False):
 def apply_model_on_event(model, test_id, output_dir, cfg):
     output_dir = Path(output_dir)
     output_dir.mkdir(exist_ok=True)
-    data_dir = Path(cfg.data.dir) / "test_images"
+    data_dir = Path(cfg.data.dir) #/ "test_images"
 
-    orbKeyLen = len(test_id.split("_")[-1]) + 1 
-    event = test_id[:-orbKeyLen]
+    # orbKeyLen = len(test_id.split("_")[-1]) + 1 
+    # event = test_id[:-orbKeyLen]
+    event = test_id
     print(event)
 
     print(f"------------------> {test_id} <-------------------")
@@ -177,27 +188,31 @@ def apply_model_on_event(model, test_id, output_dir, cfg):
     # mtbs_palette = [[0,100/255,0], [127/255,1,212/255], [1,1,0], [1,0,0], [127/255,1,0], [1,1,1]]
 
     plt.imsave(output_dir / f"{test_id}_predLabel.png", predMask, cmap='gray', vmin=0, vmax=1)
-    plt.imsave(output_dir / f"{test_id}_probMap.png", predMask, cmap='gray', vmin=0, vmax=1)
+    # errMap_rgb = imread(save_url)
+    wandb.log({f"predMap/{test_id}": wandb.Image(predMask)})
+    # plt.imsave(output_dir / f"{test_id}_probMap.png", predMask, cmap='gray', vmin=0, vmax=1)
 
-        # read and save true labels
-    if os.path.isfile(data_dir / "mask" / "poly" / f"{event}.tif"):
-        trueLabel = tiff.imread(data_dir / "mask" / "poly" / f"{event}.tif")
-        # _, _, trueLabel = geotiff.read(data_dir / "mask" / "poly" / f"{event}.tif")
-        # geotiff.save(output_dir / f"{test_id}_predLabel.tif", predMask[np.newaxis,]) 
+    #     # read and save true labels
+    # if os.path.isfile(data_dir / "mask" / "poly" / f"{event}.tif"):
+    #     trueLabel = tiff.imread(data_dir / "mask" / "poly" / f"{event}.tif")
+    #     # _, _, trueLabel = geotiff.read(data_dir / "mask" / "poly" / f"{event}.tif")
+    #     # geotiff.save(output_dir / f"{test_id}_predLabel.tif", predMask[np.newaxis,]) 
 
-        trueLabel = trueLabel.squeeze()
-        # print(trueLabel.shape, predMask.shape)
+    #     trueLabel = trueLabel.squeeze()
+    #     # print(trueLabel.shape, predMask.shape)
 
-        plt.imsave(output_dir / f"{test_id}_trueLabel.png", trueLabel, cmap='gray', vmin=0, vmax=1)
-        gen_errMap(trueLabel, predMask, save_url=output_dir / f"{test_id}.png")
+    #     plt.imsave(output_dir / f"{test_id}_trueLabel.png", trueLabel, cmap='gray', vmin=0, vmax=1)
+    #     gen_errMap(trueLabel, predMask, save_url=output_dir / f"{test_id}.png")
 
 def evaluate_model(cfg, model_url, output_dir):
 
-    import json
-    json_url = Path(cfg.data.dir) / "train_test.json"
-    with open(json_url) as json_file:
-        split_dict = json.load(json_file)
-    test_id_list = split_dict['test']['sarname']
+    # import json
+    # json_url = Path(cfg.data.dir) / "train_test.json"
+    # with open(json_url) as json_file:
+    #     split_dict = json.load(json_file)
+    # test_id_list = split_dict['test']['sarname']
+
+    test_id_list = [filename[:-4] for filename in os.listdir(Path(cfg.data.dir) / "S1" / "post")]
 
     model = torch.load(model_url)
     # output_dir = Path(SegModel.project_dir) / 'outputs'
@@ -216,7 +231,7 @@ import hydra
 import wandb
 from omegaconf import DictConfig, OmegaConf
 
-@hydra.main(config_path="./config", config_name="s1s2_cfg")
+@hydra.main(config_path="./config", config_name="s1s2_cfg_prg")
 def run_app(cfg : DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
 
@@ -240,7 +255,8 @@ def run_app(cfg : DictConfig) -> None:
     #     apply_model_on_event(model, test_id, output_dir, satellites=['S1', 'S2'])
 
     model_url = "/cephyr/NOBACKUP/groups/snic2021-7-104/puzhao-snic-500G/smp-seg-pytorch/outputs/run_s1s2_UNet_resnet18_['S1']_20211022T155051/model.pth"
-    output_dir = Path("/cephyr/NOBACKUP/groups/snic2021-7-104/puzhao-snic-500G/smp-seg-pytorch/outputs") / "errMap"
+    # output_dir = Path("/cephyr/NOBACKUP/groups/snic2021-7-104/puzhao-snic-500G/smp-seg-pytorch/outputs") / "errMap"
+    output_dir = Path("/cephyr/NOBACKUP/groups/snic2021-7-104/puzhao-snic-500G/smp-seg-pytorch") / cfg.experiment.output
     evaluate_model(cfg, model_url, output_dir)
     
     #########################################################################

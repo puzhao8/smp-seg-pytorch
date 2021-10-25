@@ -4,12 +4,14 @@ project:
 
 data:
     # dir: /cephyr/NOBACKUP/groups/snic2021-7-104/wildfire-s1s2-dataset-ak-tiles
-    dir: /cephyr/NOBACKUP/groups/snic2021-7-104/wildfire-s1s2-dataset-ca-tiles
+    # dir: /cephyr/NOBACKUP/groups/snic2021-7-104/wildfire-s1s2-dataset-ak-tiles
+    # dir: /cephyr/NOBACKUP/groups/snic2021-7-104/puzhao-snic-500G/US_2021_Dixie
+    dir: /cephyr/NOBACKUP/groups/snic2021-7-104/puzhao-snic-500G/CA_2021_Kamloops
     # dir: D:\wildfire-s1s2-dataset-ak-tiles
 
     name: s1s2
     satellites: ['S1']
-    prepost: ['post']
+    prepost: ['pre', 'post']
     stacking: True
 
     ALL_BANDS:
@@ -53,7 +55,7 @@ eval:
     patchsize: 512
 
 experiment:
-    note: ${data.satellites}_post
+    note: ${data.satellites}_to_Kam_prg
     name: ${data.name}_${model.ARCH}_${model.ENCODER}_${experiment.note}
     output: ./outputs/run_${experiment.name}_${now:%Y%m%dT%H%M%S} #${defaults.0.data}
 

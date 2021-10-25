@@ -103,14 +103,22 @@ class SegModel(object):
             classes=self.cfg.data.CLASSES,
         )
 
-        train_loader = DataLoader(train_dataset, batch_size=self.cfg.model.batch_size, shuffle=True, num_workers=12)
-        valid_loader = DataLoader(valid_dataset, batch_size=self.cfg.model.batch_size, shuffle=False, num_workers=4)
+        train_size = int(len(train_dataset) * 0.7)
+        valid_size = len(train_dataset) - train_size
+        train_set, val_set = torch.utils.data.random_split(train_dataset, [train_size, valid_size])
+
+        train_loader = DataLoader(train_set, batch_size=self.cfg.model.batch_size, shuffle=True, num_workers=4)
+        valid_loader = DataLoader(val_set, batch_size=self.cfg.model.batch_size, shuffle=True, num_workers=4)
+        test_loader = DataLoader(valid_dataset, batch_size=self.cfg.model.batch_size, shuffle=False, num_workers=4)
 
         dataloaders = { 
                         'train': train_loader, \
                         'valid': valid_loader, \
-                        'train_size': len(train_dataset),
-                        'valid_size': len(valid_dataset)
+                        'test': test_loader, \
+
+                        'train_size': train_size, \
+                        'valid_size': valid_size, \
+                        'test_size': len(valid_dataset)
                     }
 
         return dataloaders
@@ -157,7 +165,7 @@ class SegModel(object):
         self.model.to(self.DEVICE)
         
         # wandb.
-        for phase in ['train', 'valid']:
+        for phase in ['train', 'valid', 'test']:
             if phase == 'train':
                 self.model.train()
             else:

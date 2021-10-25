@@ -2,7 +2,6 @@ import os, cv2
 from pathlib import Path
 
 import numpy as np
-from test import INPUT_BANDS
 import tifffile as tiff 
 
 from torch.utils.data import DataLoader
@@ -155,12 +154,14 @@ class S1S2(BaseDataset):
 
             post_fps = self.fps_dict[sat][1]
             image_post = tiff.imread(post_fps[i]) # C*H*W
+            image_post = np.nan_to_num(image_post, 0)
             if sat in ['S1', 'ALOS']: image_post = (np.clip(image_post, -30, 0) + 30) / 30
             image_post = image_post[self.band_index_dict[sat],] # select bands
 
             if 'pre' in self.cfg.data.prepost:
                 pre_fps = self.fps_dict[sat][0]
                 image_pre = tiff.imread(pre_fps[i])
+                image_pre = np.nan_to_num(image_pre, 0)
                 if sat in ['S1', 'ALOS']: image_pre = (np.clip(image_pre, -30, 0) + 30) / 30
                 image_pre = image_pre[self.band_index_dict[sat],] # select bands
                 

@@ -7,3 +7,6 @@ main_s1s2_unet.py
 main_s1s2_fuse_unet.py
 main_mtbs.py
 ```
+
+
+scp -r 
