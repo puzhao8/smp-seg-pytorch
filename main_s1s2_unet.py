@@ -70,12 +70,12 @@ class SegModel(object):
         self.rundir = self.project_dir / self.cfg.experiment.output
         self.model_url = str( self.rundir / "model.pth")
 
-
         self.preprocessing_fn = \
             smp.encoders.get_preprocessing_fn(cfg.model.ENCODER, cfg.model.ENCODER_WEIGHTS)
 
         self.metrics = [smp.utils.metrics.IoU(threshold=0.5),
-                        smp.utils.metrics.Fscore()]
+                        smp.utils.metrics.Fscore()
+                    ]
 
         ''' -------------> need to improve <-----------------'''
         # specify data folder
@@ -103,7 +103,7 @@ class SegModel(object):
             classes=self.cfg.data.CLASSES,
         )
 
-        train_size = int(len(train_dataset) * 0.7)
+        train_size = int(len(train_dataset) * self.cfg.model.train_ratio)
         valid_size = len(train_dataset) - train_size
         train_set, val_set = torch.utils.data.random_split(train_dataset, [train_size, valid_size])
 
@@ -125,7 +125,6 @@ class SegModel(object):
 
 
     def run(self) -> None:
-
         self.dataloaders = self.get_dataloaders()
         self.optimizer = torch.optim.Adam([dict(
                 params=self.model.parameters(), 
@@ -142,23 +141,27 @@ class SegModel(object):
         self.history_logs = edict()
         self.history_logs['train'] = []
         self.history_logs['valid'] = []
+        self.history_logs['test'] = []
 
         # --------------------------------- Train -------------------------------------------
         max_score = self.cfg.model.max_score
         for epoch in range(0, self.cfg.model.max_epoch):
             epoch = epoch + 1
             print(f"\n==> train epoch: {epoch}/{self.cfg.model.max_epoch}")
-            valid_logs = self.train_one_epoch(epoch)
+            self.train_one_epoch(epoch)
+            valid_logs = self.valid_logs
             
             # do something (save model, change lr, etc.)
             if valid_logs['iou_score'] > max_score:
                 max_score = valid_logs['iou_score']
-                torch.save(self.model, self.model_url)
-                # torch.save(self.model.state_dict(), self.model_url)
-                print('Model saved!')
 
-            if epoch % 50 == 0:
-                self.optimizer.param_groups[0]['lr'] = 0.1 * self.optimizer.param_groups[0]['lr']
+                if (1 == epoch) or (0 == epoch % self.cfg.model.save_interval):
+                    torch.save(self.model, self.model_url)
+                    # torch.save(self.model.state_dict(), self.model_url)
+                    print('Model saved!')
+
+            # if epoch % 50 == 0:
+            #     self.optimizer.param_groups[0]['lr'] = 0.1 * self.optimizer.param_groups[0]['lr']
                         
         
     def train_one_epoch(self, epoch):
@@ -172,6 +175,7 @@ class SegModel(object):
                 self.model.eval()
 
             logs = self.step(phase) 
+            # print(phase, logs)
 
             currlr = self.lr_scheduler.get_last_lr()[0] if self.cfg.model.use_lr_scheduler else self.optimizer.param_groups[0]['lr']          
             wandb.log({phase: logs, 'epoch': epoch, 'lr': currlr})
@@ -179,9 +183,8 @@ class SegModel(object):
             temp = [logs["total_loss"]] + [logs[self.metrics[i].__name__] for i in range(0, len(self.metrics))]
             self.history_logs[phase].append(temp)
 
-            if phase == 'valid':
-                valid_logs = logs
-                return valid_logs
+            if phase == 'valid': self.valid_logs = logs
+
 
 
     def step(self, phase) -> dict:
@@ -262,7 +265,7 @@ def set_random_seed(seed, deterministic=False):
         torch.backends.cudnn.benchmark = False
 
 
-@hydra.main(config_path="./config", config_name="s1s2_cfg")
+@hydra.main(config_path="./config", config_name="s1s2_unet")
 def run_app(cfg : DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
 

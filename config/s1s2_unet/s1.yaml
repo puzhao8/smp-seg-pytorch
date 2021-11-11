@@ -1,0 +1,8 @@
+#@package _global_
+data:
+    satellites: ['S1']
+    prepost: ['pre', 'post']
+    stacking: True
+
+model:
+    ARCH: UNet #FuseUNet, UNet

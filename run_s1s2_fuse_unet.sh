@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH -A SNIC2021-7-104
 #SBATCH -N 1
-#SBATCH --gpus-per-node=T4:1 
+#SBATCH --gpus-per-node=A100:1
 #SBATCH -t 7-00:00:00
-#SBATCH --job-name s1s2-unet
+#SBATCH --job-name fuse-unet
 
 echo "start"
 
@@ -25,7 +25,13 @@ echo "start"
 # done &
 # LOOPPID=$!
 
-singularity exec --nv /cephyr/users/puzhao/Alvis/PyTorch_v1.7.0-py3.sif python main_s1s2_unet.py
+CDC=(0 0.01 0.1)
+CFG=${CDC[$SLURM_ARRAY_TASK_ID]}
+echo "Running simulation $CFG"
+echo "singularity exec --nv /cephyr/users/puzhao/Alvis/PyTorch_v1.7.0-py3.sif python main_s1s2_fuse_unet.py model.cross_domain_coef=$CFG"
+echo "---------------------------------------------------------------------------------------------------------------"
+
+singularity exec --nv /cephyr/users/puzhao/Alvis/PyTorch_v1.7.0-py3.sif python main_s1s2_fuse_unet.py model.cross_domain_coef=$CFG
 
 # singularity exec --nv /cephyr/users/puzhao/Alvis/PyTorch_v1.7.0-py3.sif python test.py 
 
@@ -36,3 +42,6 @@ rm -rf $SLURM_SUBMIT_DIR/*.log
 # rm -rf $SLURM_SUBMIT_DIR/*.out
 
 echo "finish"
+
+# # run
+# sbatch --array=0-2 run_s1s2_fuse_unet.sh

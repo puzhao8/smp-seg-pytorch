@@ -83,7 +83,7 @@ class SegModel(object):
 
         self.metrics = [smp.utils.metrics.IoU(threshold=0.5),
                         smp.utils.metrics.Fscore(),
-                        ]
+                    ]
 
         ''' -------------> need to improve <-----------------'''
         # specify data folder
@@ -106,20 +106,28 @@ class SegModel(object):
 
         valid_dataset = Dataset(
             self.valid_dir, 
-            self.cfg,
+            self.cfg, 
             # augmentation=get_validation_augmentation(), 
             # preprocessing=get_preprocessing(self.preprocessing_fn),
             classes=self.cfg.data.CLASSES,
         )
 
-        train_loader = DataLoader(train_dataset, batch_size=self.cfg.model.batch_size, shuffle=True, num_workers=4)
-        valid_loader = DataLoader(valid_dataset, batch_size=self.cfg.model.batch_size, shuffle=False, num_workers=4)
+        train_size = int(len(train_dataset) * self.cfg.model.train_ratio)
+        valid_size = len(train_dataset) - train_size
+        train_set, val_set = torch.utils.data.random_split(train_dataset, [train_size, valid_size])
+
+        train_loader = DataLoader(train_set, batch_size=self.cfg.model.batch_size, shuffle=True, num_workers=4)
+        valid_loader = DataLoader(val_set, batch_size=self.cfg.model.batch_size, shuffle=True, num_workers=4)
+        test_loader = DataLoader(valid_dataset, batch_size=self.cfg.model.batch_size, shuffle=False, num_workers=4)
 
         dataloaders = { 
                         'train': train_loader, \
                         'valid': valid_loader, \
-                        'train_size': len(train_dataset),
-                        'valid_size': len(valid_dataset)
+                        'test': test_loader, \
+
+                        'train_size': train_size, \
+                        'valid_size': valid_size, \
+                        'test_size': len(valid_dataset)
                     }
 
         return dataloaders
@@ -143,29 +151,34 @@ class SegModel(object):
         self.history_logs = edict()
         self.history_logs['train'] = []
         self.history_logs['valid'] = []
+        self.history_logs['test'] = []
 
         # --------------------------------- Train -------------------------------------------
+        max_score = self.cfg.model.max_score
         for epoch in range(0, self.cfg.model.max_epoch):
             epoch = epoch + 1
             print(f"\n==> train epoch: {epoch}/{self.cfg.model.max_epoch}")
-            valid_logs = self.train_one_epoch(epoch)
+            self.train_one_epoch(epoch)
+            valid_logs = self.valid_logs
             
             # do something (save model, change lr, etc.)
-            if valid_logs['iou_score'] > self.cfg.model.max_score:
+            if valid_logs['iou_score'] > max_score:
                 max_score = valid_logs['iou_score']
-                torch.save(self.model, self.model_url)
-                # torch.save(self.model.state_dict(), self.model_url)
-                print('Model saved!')
 
-            if epoch % 50 == 0:
-                self.optimizer.param_groups[0]['lr'] = 0.1 * self.optimizer.param_groups[0]['lr']
+                if 0 == epoch % self.cfg.model.save_interval:
+                    torch.save(self.model, self.model_url)
+                    # torch.save(self.model.state_dict(), self.model_url)
+                    print('Model saved!')
+
+            # if epoch % 50 == 0:
+            #     self.optimizer.param_groups[0]['lr'] = 0.1 * self.optimizer.param_groups[0]['lr']
                         
         
     def train_one_epoch(self, epoch):
         self.model.to(self.DEVICE)
         
         # wandb.
-        for phase in ['train', 'valid']:
+        for phase in ['train', 'valid', 'test']:
             if phase == 'train':
                 self.model.train()
             else:
@@ -179,9 +192,7 @@ class SegModel(object):
             temp = [logs["total_loss"]] + [logs[self.metrics[i].__name__] for i in range(0, len(self.metrics))]
             self.history_logs[phase].append(temp)
 
-            if phase == 'valid':
-                valid_logs = logs
-                return valid_logs
+            if phase == 'valid': self.valid_logs = logs
 
 
     def step(self, phase) -> dict:
@@ -194,6 +205,7 @@ class SegModel(object):
 
         with tqdm(iter(self.dataloaders[phase]), desc=phase, file=sys.stdout, disable=not self.cfg.model.verbose) as iterator:
             for (x1, x2, y) in iterator:
+            # for (x1_pre, x1_post, x2_pre, x2_post, y) in iterator:
                 # print(x.shape)
                 # print(y.shape)
 
@@ -206,7 +218,8 @@ class SegModel(object):
                 self.optimizer.zero_grad()
 
                 if 'FuseUNet' in self.cfg.model.ARCH:
-                    y_pred, decoder_out = self.model.forward((x1, x2))
+                    if 'train' == phase: y_pred, decoder_out = self.model.forward((x1, x2))
+                    else: y_pred, decoder_out = self.model.forward((x1, x2))
                     cross_domain_loss = mse_loss(decoder_out[0], decoder_out[1])
 
                 else: 

@@ -1,9 +1,7 @@
 #!/bin/bash
 #SBATCH -A SNIC2021-7-104
-#SBATCH -N 1
-#SBATCH --gpus-per-node=T4:1 
+#SBATCH -N 1 --gpus-per-node=T4:1
 #SBATCH -t 7-00:00:00
-#SBATCH --job-name s1s2-unet
 
 echo "start"
 
@@ -25,7 +23,11 @@ echo "start"
 # done &
 # LOOPPID=$!
 
-singularity exec --nv /cephyr/users/puzhao/Alvis/PyTorch_v1.7.0-py3.sif python main_s1s2_unet.py
+module load intel
+
+echo "Running simulation on data_${SLURM_ARRAY_TASK_ID}.in"
+
+# singularity exec --nv /cephyr/users/puzhao/Alvis/PyTorch_v1.7.0-py3.sif python main_s1s2_unet.py --model.max_epoch=$max_epoch
 
 # singularity exec --nv /cephyr/users/puzhao/Alvis/PyTorch_v1.7.0-py3.sif python test.py 
 
@@ -33,6 +35,6 @@ singularity exec --nv /cephyr/users/puzhao/Alvis/PyTorch_v1.7.0-py3.sif python m
 # kill $LOOPPID
 
 rm -rf $SLURM_SUBMIT_DIR/*.log
-# rm -rf $SLURM_SUBMIT_DIR/*.out
+rm -rf $SLURM_SUBMIT_DIR/*.out
 
 echo "finish"
