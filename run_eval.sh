@@ -3,7 +3,7 @@
 #SBATCH -N 1
 #SBATCH --gpus-per-node=T4:1 
 #SBATCH -t 7-00:00:00
-#SBATCH --job-name s1s2-unet
+#SBATCH --job-name eval
 
 echo "start"
 

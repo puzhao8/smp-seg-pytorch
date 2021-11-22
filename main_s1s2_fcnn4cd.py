@@ -50,14 +50,6 @@ from torch.utils.data import DataLoader
 from dataset.wildfire import S1S2 as Dataset # ------------------------------------------------------- Dataset
 
 from models.lr_schedule import get_cosine_schedule_with_warmup
-mse_loss = nn.MSELoss(reduction='mean')
-
-# def mse_loss(input, target):
-#     input_sigmoid = torch.sigmoid(input)
-#     iflat = input_sigmoid.flatten()
-#     tflat = target.flatten()
-
-#     return nn.MSELoss()(iflat, tflat) / len(tflat)
 
 
 def format_logs(logs):
@@ -82,14 +74,13 @@ class SegModel(object):
             smp.encoders.get_preprocessing_fn(cfg.model.ENCODER, cfg.model.ENCODER_WEIGHTS)
 
         self.metrics = [smp.utils.metrics.IoU(threshold=0.5),
-                        smp.utils.metrics.Fscore(),
+                        smp.utils.metrics.Fscore()
                     ]
 
         ''' -------------> need to improve <-----------------'''
         # specify data folder
         self.train_dir = Path(self.cfg.data.dir) / 'train'
         self.valid_dir = Path(self.cfg.data.dir) / 'test'
-        
         '''--------------------------------------------------'''
 
 
@@ -134,7 +125,6 @@ class SegModel(object):
 
 
     def run(self) -> None:
-
         self.dataloaders = self.get_dataloaders()
         self.optimizer = torch.optim.Adam([dict(
                 params=self.model.parameters(), 
@@ -165,7 +155,7 @@ class SegModel(object):
             if valid_logs['iou_score'] > max_score:
                 max_score = valid_logs['iou_score']
 
-                if (1== epoch) and (0 == epoch % self.cfg.model.save_interval):
+                if (1 == epoch) or (0 == epoch % self.cfg.model.save_interval):
                     torch.save(self.model, self.model_url)
                     # torch.save(self.model.state_dict(), self.model_url)
                     print('Model saved!')
@@ -185,6 +175,7 @@ class SegModel(object):
                 self.model.eval()
 
             logs = self.step(phase) 
+            # print(phase, logs)
 
             currlr = self.lr_scheduler.get_last_lr()[0] if self.cfg.model.use_lr_scheduler else self.optimizer.param_groups[0]['lr']          
             wandb.log({phase: logs, 'epoch': epoch, 'lr': currlr})
@@ -193,6 +184,7 @@ class SegModel(object):
             self.history_logs[phase].append(temp)
 
             if phase == 'valid': self.valid_logs = logs
+
 
 
     def step(self, phase) -> dict:
@@ -205,9 +197,6 @@ class SegModel(object):
 
         with tqdm(iter(self.dataloaders[phase]), desc=phase, file=sys.stdout, disable=not self.cfg.model.verbose) as iterator:
             for (x1, x2, y) in iterator:
-            # for (x1_pre, x1_post, x2_pre, x2_post, y) in iterator:
-                # print(x.shape)
-                # print(y.shape)
 
                 # if ('Train' in phase) and (self.cfg.useDataWoCAug):
                 #     x0, y0 = next(dataLoader_woCAug)  
@@ -216,26 +205,15 @@ class SegModel(object):
 
                 x1, x2, y = x1.to(self.DEVICE), x2.to(self.DEVICE), y.to(self.DEVICE)
                 self.optimizer.zero_grad()
+                self.optimizer.zero_grad()
 
-                if 'FuseUNet' in self.cfg.model.ARCH:
-                    # if 'train' == phase: y_pred, decoder_out = self.model.forward((x1, x2))
-                    # else: y_pred, decoder_out = self.model.forward((x1, x2))
+                y_pred = self.model.forward(x1, x2)
 
-                    y_pred, decoder_out = self.model.forward((x1, x2))
-                    
-                    cross_domain_loss = mse_loss(decoder_out[0], decoder_out[1])
-
-                else: 
-                    y_pred = self.model.forward((x1, x2))
-                    cross_domain_loss = 0
-
-    
                 dice_loss_ =  diceLoss(y_pred, y)
-                
                 # focal_loss_ = self.cfg.alpha * focal_loss(y_pred, y)
                 # tv_loss_ = 1e-5 * self.cfg.beta * torch.mean(tv_loss(y_pred))
 
-                loss_ = dice_loss_ + self.cfg.model.cross_domain_coef * cross_domain_loss
+                loss_ = dice_loss_
 
                 # update loss logs
                 loss_value = loss_.cpu().detach().numpy()
@@ -250,7 +228,6 @@ class SegModel(object):
                     metrics_meters[metric_fn.__name__].add(metric_value)
 
                 metrics_logs = {k: v.mean for k, v in metrics_meters.items()}
-                metrics_logs['mse_loss'] = cross_domain_loss
                 logs.update(metrics_logs)
                 # print(logs)
 
@@ -289,7 +266,7 @@ def set_random_seed(seed, deterministic=False):
         torch.backends.cudnn.benchmark = False
 
 
-@hydra.main(config_path="./config", config_name="s1s2_fuse_unet")
+@hydra.main(config_path="./config", config_name="s1s2_fcnn4cd")
 def run_app(cfg : DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
 

@@ -116,13 +116,16 @@ def inference(model, test_dir, test_id, cfg):
 
             ''' ------------> apply model <--------------- '''
             if 'FuseUNet' in cfg.model.ARCH:
-                predPatch, _ = model.forward(input_patchs)
+                predPatch, decoder_out = model.forward(input_patchs)
             else:
                 predPatch = model.forward(inputPatch)
             ''' ------------------------------------------ '''
 
-            predPatch = predPatch.squeeze().cpu().detach().numpy()#.round()
-            predLabel = np.argmax(predPatch, axis=0).squeeze()
+            predPatch = decoder_out[1].squeeze().cpu().detach().numpy()#.round()
+            predLabel = 1 - np.argmax(predPatch, axis=0).squeeze()
+
+            # predPatch = predPatch.squeeze().cpu().detach().numpy()#.round()
+            # predLabel = np.argmax(predPatch, axis=0).squeeze()
 
             pred_mask_pad[i+padSize:i+padSize+patchsize, j+padSize:j+padSize+patchsize] = predLabel[padSize:padSize+patchsize, padSize:padSize+patchsize]  # need to modify
             prob_mask_pad[:, i+padSize:i+padSize+patchsize, j+padSize:j+padSize+patchsize] = predPatch[:, padSize:padSize+patchsize, padSize:padSize+patchsize]  # need to modify
@@ -216,7 +219,7 @@ import hydra
 import wandb
 from omegaconf import DictConfig, OmegaConf
 
-@hydra.main(config_path="./config", config_name="s1s2_cfg")
+@hydra.main(config_path="./config", config_name="s1s2_fuse_unet")
 def run_app(cfg : DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
 
@@ -239,7 +242,7 @@ def run_app(cfg : DictConfig) -> None:
     # for test_id in test_id_list:
     #     apply_model_on_event(model, test_id, output_dir, satellites=['S1', 'S2'])
 
-    model_url = "/cephyr/NOBACKUP/groups/snic2021-7-104/puzhao-snic-500G/smp-seg-pytorch/outputs/run_s1s2_UNet_resnet18_['S1']_20211022T155051/model.pth"
+    model_url = "/cephyr/NOBACKUP/groups/snic2021-7-104/puzhao-snic-500G/smp-seg-pytorch/outputs/model.pth"
     output_dir = Path("/cephyr/NOBACKUP/groups/snic2021-7-104/puzhao-snic-500G/smp-seg-pytorch/outputs") / "errMap"
     evaluate_model(cfg, model_url, output_dir)
     

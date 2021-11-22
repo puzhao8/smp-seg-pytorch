@@ -34,8 +34,8 @@ class SegmentationModel(torch.nn.Module):
         decoder2 = self.decoder2(*features2)
         decoder2 = self.segmentation_head2(decoder2)
 
-        decoder_output = torch.cat([decoder1, decoder2], dim=1)
-        masks = self.segmentation_head(decoder_output)
+        # decoder_output = torch.cat([decoder1, decoder2], dim=1)
+        masks = self.segmentation_head(decoder1)
 
         # if self.classification_head is not None:
         #     labels = self.classification_head(features[-1])
@@ -149,7 +149,9 @@ class FuseUnet(SegmentationModel):
         self.encoder2, self.decoder2, self.segmentation_head2= get_UNet(in_channels[1])
         
         self.segmentation_head = SegmentationHead(
-                in_channels=classes*len(in_channels), # puzhao
+                # in_channels=classes*len(in_channels), # puzhao
+                # out_channels=classes,
+                in_channels=len(in_channels), # puzhao
                 out_channels=classes,
                 activation=activation,
                 kernel_size=3,

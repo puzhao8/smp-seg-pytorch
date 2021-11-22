@@ -1,8 +1,6 @@
 
 import smp
-from fcnn4cd.unet import Unet as Vanilla_unet
-from fcnn4cd.siamunet_conc import SiamUnet_conc
-from fcnn4cd.siamunet_diff import SiamUnet_diff
+
 
 def init_model(cfg):
 
@@ -13,10 +11,6 @@ def init_model(cfg):
     # single sensor
     if cfg.data.stacking and (1==len(cfg.data.satellites)): 
         INPUT_CHANNELS = len(cfg.data.prepost) * INPUT_CHANNELS_DICT[cfg.data.satellites[0]]
-    else:
-        INPUT_CHANNELS = INPUT_CHANNELS_DICT[cfg.data.satellites[0]]
-    
-    print("INPUT_CHANNELS: ", INPUT_CHANNELS)
     
     # UNet
     if cfg.model.ARCH == 'UNet':
@@ -30,6 +24,7 @@ def init_model(cfg):
             classes = len(cfg.data.CLASSES), 
             activation = cfg.model.ACTIVATION,
         )
+        return model
 
     # DeepLabV3+
     if cfg.model.ARCH == 'DeepLabV3+':
@@ -42,6 +37,7 @@ def init_model(cfg):
             activation = cfg.model.ACTIVATION,
             in_channels = INPUT_CHANNELS
         )
+        return model
 
     
     if cfg.model.ARCH == 'FuseUNet':
@@ -62,15 +58,6 @@ def init_model(cfg):
             classes = len(cfg.data.CLASSES), 
             activation = cfg.model.ACTIVATION,
         )
-    
-    if cfg.model.ARCH == "Vanilla_unet":
-        model = vanilla_unet(2*INPUT_CHANNELS, len(cfg.data.CLASSES)) #'FC-EF'
-    
-    if cfg.model.ARCH == "SiamUnet_conc":
-        model = SiamUnet_conc(INPUT_CHANNELS, len(cfg.data.CLASSES)) #'FC-Siam-conc'
+        return model
 
-    if cfg.model.ARCH == "SiamUnet_diff":
-        model = SiamUnet_diff(INPUT_CHANNELS, len(cfg.data.CLASSES)) #'FC-Siam-diff'
-
-
-    return model
+        

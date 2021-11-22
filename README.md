@@ -9,4 +9,4 @@ main_mtbs.py
 ```
 
 
-scp -r 
+scp -r puzhao@alvis1.c3se.chalmers.se:/cephyr/NOBACKUP/groups/snic2021-7-104/puzhao-snic-500G/smp-seg-pytorch/outputs/errMap D:\PyProjects\IGARSS-2022-S1S2\

@@ -3,7 +3,7 @@
 #SBATCH -N 1
 #SBATCH --gpus-per-node=A100:1
 #SBATCH -t 7-00:00:00
-#SBATCH --job-name fuse-unet
+#SBATCH --job-name fcnn4cd
 
 echo "start"
 
@@ -25,13 +25,13 @@ echo "start"
 # done &
 # LOOPPID=$!
 
-CDC=(0 0.01 0.1)
+CDC=("Vanilla_unet" "SiamUnet_conc" "SiamUnet_diff")
 CFG=${CDC[$SLURM_ARRAY_TASK_ID]}
 echo "Running simulation $CFG"
-echo "singularity exec --nv /cephyr/users/puzhao/Alvis/PyTorch_v1.7.0-py3.sif python main_s1s2_fuse_unet.py model.cross_domain_coef=$CFG"
+echo "singularity exec --nv /cephyr/users/puzhao/Alvis/PyTorch_v1.7.0-py3.sif python main_s1s2_fcnn4cd.py model.ARCH=$CFG"
 echo "---------------------------------------------------------------------------------------------------------------"
 
-singularity exec --nv /cephyr/users/puzhao/Alvis/PyTorch_v1.7.0-py3.sif python main_s1s2_fuse_unet.py model.cross_domain_coef=$CFG experiment.note=tc
+singularity exec --nv /cephyr/users/puzhao/Alvis/PyTorch_v1.7.0-py3.sif python3 main_s1s2_fcnn4cd.py model.ARCH=$CFG
 
 # singularity exec --nv /cephyr/users/puzhao/Alvis/PyTorch_v1.7.0-py3.sif python test.py 
 
@@ -44,4 +44,4 @@ rm -rf $SLURM_SUBMIT_DIR/*.log
 echo "finish"
 
 # # run
-# sbatch --array=0-2 run_s1s2_fuse_unet.sh
+# sbatch --array=0-2 run_s1s2_fcnn4cd.sh
