@@ -30,7 +30,7 @@ data:
     USE_PRE_IMG: True
 
 model:
-    ARCH: SiamUnet_conc #FuseUNet, UNet
+    ARCH: Paddle_unet #SiamUnet_conc #FuseUNet, UNet
     ACTIVATION: sigmoid
     ENCODER: resnet18 # 'mobilenet_v2'
     ENCODER_WEIGHTS: imagenet

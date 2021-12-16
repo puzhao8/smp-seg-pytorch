@@ -1,8 +1,11 @@
 
 import smp
 from fcnn4cd.unet import Unet as Vanilla_unet
+from fcnn4cd.paddle_unet import UNet as Paddle_unet
+from fcnn4cd.paddle_unet_cdc import UNet as cdc_unet
 from fcnn4cd.siamunet_conc import SiamUnet_conc
 from fcnn4cd.siamunet_diff import SiamUnet_diff
+from fcnn4cd.siamunet_min_diff import SiamUnet_minDiff
 
 def init_model(cfg):
 
@@ -64,7 +67,7 @@ def init_model(cfg):
         )
     
     if cfg.model.ARCH == "Vanilla_unet":
-        model = vanilla_unet(2*INPUT_CHANNELS, len(cfg.data.CLASSES)) #'FC-EF'
+        model = Vanilla_unet(2*INPUT_CHANNELS, len(cfg.data.CLASSES)) #'FC-EF'
     
     if cfg.model.ARCH == "SiamUnet_conc":
         model = SiamUnet_conc(INPUT_CHANNELS, len(cfg.data.CLASSES)) #'FC-Siam-conc'
@@ -72,5 +75,13 @@ def init_model(cfg):
     if cfg.model.ARCH == "SiamUnet_diff":
         model = SiamUnet_diff(INPUT_CHANNELS, len(cfg.data.CLASSES)) #'FC-Siam-diff'
 
+    if cfg.model.ARCH == "SiamUnet_minDiff":
+        model = SiamUnet_diff(INPUT_CHANNELS, len(cfg.data.CLASSES)) #'FC-Siam-diff'
+
+    if cfg.model.ARCH == "Paddle_unet":
+        model = Paddle_unet(2*INPUT_CHANNELS, len(cfg.data.CLASSES)) #'FC-EF'
+
+    if cfg.model.ARCH == "cdc_unet":
+        model = cdc_unet(2*INPUT_CHANNELS, len(cfg.data.CLASSES)) #'FC-EF'
 
     return model

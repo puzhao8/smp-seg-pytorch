@@ -39,7 +39,7 @@ f_score = smp.utils.functional.f_score
 
 # Dice/F1 score - https://en.wikipedia.org/wiki/S%C3%B8rensen%E2%80%93Dice_coefficient
 # IoU/Jaccard score - https://en.wikipedia.org/wiki/Jaccard_index
-diceLoss = smp.utils.losses.DiceLoss(eps=1)
+diceLoss = smp.utils.losses.DiceLoss(eps=1, activation='sigmoid') # , activation='argmax2d'
 AverageValueMeter =  smp.utils.train.AverageValueMeter
 
 # Augmentations
@@ -73,8 +73,8 @@ class SegModel(object):
         self.preprocessing_fn = \
             smp.encoders.get_preprocessing_fn(cfg.model.ENCODER, cfg.model.ENCODER_WEIGHTS)
 
-        self.metrics = [smp.utils.metrics.IoU(threshold=0.5),
-                        smp.utils.metrics.Fscore()
+        self.metrics = [smp.utils.metrics.IoU(threshold=0.5, activation="argmax2d"),
+                        smp.utils.metrics.Fscore(activation="argmax2d")
                     ]
 
         ''' -------------> need to improve <-----------------'''
@@ -202,15 +202,16 @@ class SegModel(object):
                 #     x0, y0 = next(dataLoader_woCAug)  
                 #     x = torch.cat((x0, x), dim=0)
                 #     y = torch.cat((y0, y), dim=0)
-                
+
                 # y = torch.argmax(y, dim=1)
                 x, y = x.to(self.DEVICE), y.to(self.DEVICE)
                 self.optimizer.zero_grad()
 
                 y_pred = self.model.forward(x)
 
-                # y_gt = torch.argmax(y, dim=1)
+                
                 dice_loss_ =  diceLoss(y_pred, y)
+                # dice_loss_.grad_fn = True
                 # focal_loss_ = self.cfg.alpha * focal_loss(y_pred, y)
                 # tv_loss_ = 1e-5 * self.cfg.beta * torch.mean(tv_loss(y_pred))
 

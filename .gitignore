@@ -3,6 +3,8 @@ README_local_only.md
 outputs/*
 *.out
 *.log
+wandb/*
+geo/*.sh
 
 
 

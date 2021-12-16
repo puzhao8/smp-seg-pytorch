@@ -205,9 +205,8 @@ class SegModel(object):
 
                 x1, x2, y = x1.to(self.DEVICE), x2.to(self.DEVICE), y.to(self.DEVICE)
                 self.optimizer.zero_grad()
-                self.optimizer.zero_grad()
 
-                y_pred = self.model.forward(x1, x2)
+                y_pred = self.model.forward((x1, x2))
 
                 dice_loss_ =  diceLoss(y_pred, y)
                 # focal_loss_ = self.cfg.alpha * focal_loss(y_pred, y)

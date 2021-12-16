@@ -1,5 +1,5 @@
 project:
-    name: s1s2-snic-test
+    name: s1s2-snic-fresh
     entity: wildfire
 
 data:
@@ -7,7 +7,8 @@ data:
     satellites: ['S1', 'S2']
     prepost: ['pre', 'post']
     stacking: True
-    dir: /cephyr/NOBACKUP/groups/snic2021-7-104/wildfire-s1s2-dataset-ca-tiles
+    # dir: /cephyr/NOBACKUP/groups/snic2021-7-104/wildfire-s1s2-dataset-ca-tiles
+    dir: /home/p/u/puzhao/wildfire-s1s2-dataset-ca-tiles
     # dir: D:\wildfire-s1s2-dataset-ak-tiles
 
     ALL_BANDS:
@@ -30,14 +31,14 @@ data:
     USE_PRE_IMG: True
 
 model:
-    ARCH: FuseUNet #FuseUNet, UNet
+    ARCH: cdc_unet #Paddle_unet #FuseUNet #FuseUNet, UNet
     ACTIVATION: sigmoid
     ENCODER: resnet18 # 'mobilenet_v2'
     ENCODER_WEIGHTS: imagenet
 
     train_ratio: 0.8
-    max_epoch: 100
-    batch_size: 32
+    max_epoch: 20
+    batch_size: 16
     learning_rate: 1e-4
     weight_decay: 1e-4
     cross_domain_coef: 0
@@ -53,8 +54,8 @@ eval:
     patchsize: 512
 
 experiment:
-    note: ${data.satellites}_cdc_${model.cross_domain_coef}
-    name: ${data.name}_${model.ARCH}_${model.ENCODER}_${experiment.note}
+    note: cdc_${model.cross_domain_coef}
+    name: ${data.name}_${model.ARCH}_${experiment.note}
     output: ./outputs/run_${experiment.name}_${now:%Y%m%dT%H%M%S} #${defaults.0.data}
 
 hydra:

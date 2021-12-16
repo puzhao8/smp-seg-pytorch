@@ -116,16 +116,20 @@ def inference(model, test_dir, test_id, cfg):
 
             ''' ------------> apply model <--------------- '''
             if 'FuseUNet' in cfg.model.ARCH:
-                predPatch, decoder_out = model.forward(input_patchs)
+                predPatch, decoder_out = model.forward(input_patchs, False)
+
+            elif 'cdc_unet' in cfg.model.ARCH:
+                predPatch, decoder_out = model.forward(input_patchs, False)
+
             else:
-                predPatch = model.forward(inputPatch)
+                predPatch = model.forward(input_patchs)
             ''' ------------------------------------------ '''
 
-            predPatch = decoder_out[1].squeeze().cpu().detach().numpy()#.round()
-            predLabel = 1 - np.argmax(predPatch, axis=0).squeeze()
+            # predPatch = decoder_out[1].squeeze().cpu().detach().numpy()#.round()
+            # predLabel = 1 - np.argmax(predPatch, axis=0).squeeze()
 
-            # predPatch = predPatch.squeeze().cpu().detach().numpy()#.round()
-            # predLabel = np.argmax(predPatch, axis=0).squeeze()
+            predPatch = predPatch.squeeze().cpu().detach().numpy()#.round()
+            predLabel = np.argmax(predPatch, axis=0).squeeze()
 
             pred_mask_pad[i+padSize:i+padSize+patchsize, j+padSize:j+padSize+patchsize] = predLabel[padSize:padSize+patchsize, padSize:padSize+patchsize]  # need to modify
             prob_mask_pad[:, i+padSize:i+padSize+patchsize, j+padSize:j+padSize+patchsize] = predPatch[:, padSize:padSize+patchsize, padSize:padSize+patchsize]  # need to modify
@@ -164,8 +168,9 @@ def apply_model_on_event(model, test_id, output_dir, cfg):
     output_dir.mkdir(exist_ok=True)
     data_dir = Path(cfg.data.dir) / "test_images"
 
-    orbKeyLen = len(test_id.split("_")[-1]) + 1 
-    event = test_id[:-orbKeyLen]
+    # orbKeyLen = len(test_id.split("_")[-1]) + 1 
+    # event = test_id[:-orbKeyLen]
+    event = test_id
     print(event)
 
     print(f"------------------> {test_id} <-------------------")
@@ -194,13 +199,18 @@ def apply_model_on_event(model, test_id, output_dir, cfg):
         plt.imsave(output_dir / f"{test_id}_trueLabel.png", trueLabel, cmap='gray', vmin=0, vmax=1)
         gen_errMap(trueLabel, predMask, save_url=output_dir / f"{test_id}.png")
 
+
 def evaluate_model(cfg, model_url, output_dir):
 
-    import json
-    json_url = Path(cfg.data.dir) / "train_test.json"
-    with open(json_url) as json_file:
-        split_dict = json.load(json_file)
-    test_id_list = split_dict['test']['sarname']
+    # import json
+    # json_url = Path(cfg.data.dir) / "train_test.json"
+    # with open(json_url) as json_file:
+    #     split_dict = json.load(json_file)
+    # test_id_list = split_dict['test']['sarname']
+
+    test_id_list = os.listdir(Path(cfg.data.dir) / "test_images" / "S2" / "post")
+    test_id_list = [test_id[:-4] for test_id in test_id_list]
+    print(test_id_list)
 
     model = torch.load(model_url)
     # output_dir = Path(SegModel.project_dir) / 'outputs'
@@ -219,7 +229,7 @@ import hydra
 import wandb
 from omegaconf import DictConfig, OmegaConf
 
-@hydra.main(config_path="./config", config_name="s1s2_fuse_unet")
+@hydra.main(config_path="./config", config_name="s1s2_fcnn4cd")
 def run_app(cfg : DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
 

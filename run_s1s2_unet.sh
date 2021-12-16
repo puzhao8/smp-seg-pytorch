@@ -1,11 +1,14 @@
 #!/bin/bash
 #SBATCH -A SNIC2021-7-104
 #SBATCH -N 1
-#SBATCH --gpus-per-node=T4:3
+#SBATCH --gpus-per-node=T4:1
 #SBATCH -t 7-00:00:00
 #SBATCH --job-name prepost
 
 echo "start"
+
+echo "Starting job ${SLURM_JOB_ID} on ${SLURMD_NODENAME}"
+nvidia-smi
 
 module --ignore-cache load "intel"
 PROJECT_DIR=/cephyr/NOBACKUP/groups/snic2021-7-104/puzhao-snic-500G/smp-seg-pytorch

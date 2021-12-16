@@ -165,7 +165,7 @@ class SegModel(object):
             if valid_logs['iou_score'] > max_score:
                 max_score = valid_logs['iou_score']
 
-                if (1== epoch) and (0 == epoch % self.cfg.model.save_interval):
+                if (1== epoch) or (0 == epoch % self.cfg.model.save_interval):
                     torch.save(self.model, self.model_url)
                     # torch.save(self.model.state_dict(), self.model_url)
                     print('Model saved!')

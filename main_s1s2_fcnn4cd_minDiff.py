@@ -42,6 +42,15 @@ f_score = smp.utils.functional.f_score
 diceLoss = smp.utils.losses.DiceLoss(eps=1)
 AverageValueMeter =  smp.utils.train.AverageValueMeter
 
+def get_diff_loss(feat_diff, y): 
+    print(">>>>>>>>>>")
+    print(feat_diff.shape, y.shape)
+
+    mask = F.interpolate(y, feat_diff.shape)
+    fenzi = torch.mean(feat_diff * y)
+    fenmu = torch.mean(feat_diff * (1-y))
+    return fenzi / (fenmu + 1e-4)
+
 # Augmentations
 from dataset.augument import get_training_augmentation, \
     get_validation_augmentation, get_preprocessing
@@ -190,44 +199,54 @@ class SegModel(object):
     def step(self, phase) -> dict:
         logs = {}
         loss_meter = AverageValueMeter()
+        diff_meter = AverageValueMeter()
+
         metrics_meters = {metric.__name__: AverageValueMeter() for metric in self.metrics}
 
         # if ('Train' in phase) and (self.cfg.useDataWoCAug):
         #     dataLoader_woCAug = iter(self.dataloaders['Train_woCAug'])
 
         with tqdm(iter(self.dataloaders[phase]), desc=phase, file=sys.stdout, disable=not self.cfg.model.verbose) as iterator:
-            for (x, y) in iterator:
+            for (x1, x2, y) in iterator:
 
                 # if ('Train' in phase) and (self.cfg.useDataWoCAug):
                 #     x0, y0 = next(dataLoader_woCAug)  
                 #     x = torch.cat((x0, x), dim=0)
                 #     y = torch.cat((y0, y), dim=0)
-                
-                # y = torch.argmax(y, dim=1)
-                x, y = x.to(self.DEVICE), y.to(self.DEVICE)
+
+                x1, x2, y = x1.to(self.DEVICE), x2.to(self.DEVICE), y.to(self.DEVICE)
+                self.optimizer.zero_grad()
                 self.optimizer.zero_grad()
 
-                y_pred = self.model.forward(x)
+                returned = self.model.forward((x1, x2))
+                # print(returned)
+                y_pred, diff_tuple = returned[0], returned[1]
+                print("diff_tuple", diff_tuple)
 
-                # y_gt = torch.argmax(y, dim=1)
                 dice_loss_ =  diceLoss(y_pred, y)
                 # focal_loss_ = self.cfg.alpha * focal_loss(y_pred, y)
                 # tv_loss_ = 1e-5 * self.cfg.beta * torch.mean(tv_loss(y_pred))
 
-                loss_ = dice_loss_
+                diff_loss = 0
+                if 'train' == phase:
+                    # compute the differnce between bi-temporal features
+                    for feat_diff in diff_tuple:
+                        diff_loss += get_diff_loss(feat_diff, y)
 
-                if phase == 'train':
-                    loss_.backward()
-                    self.optimizer.step()
+                    loss_ = dice_loss_ + diff_loss
 
-                    if self.cfg.model.use_lr_scheduler:
-                        self.lr_scheduler.step()
+                else:
+                    loss_ = dice_loss_
 
                 # update loss logs
                 loss_value = loss_.cpu().detach().numpy()
                 loss_meter.add(loss_value)
+
+                diff_value = diff_loss.cpu().detach().numpy()
+                diff_meter.add(diff_value)
+
                 # loss_logs = {criterion.__name__: loss_meter.mean}
-                loss_logs = {'total_loss': loss_meter.mean}
+                loss_logs = {'total_loss': loss_meter.mean, "diff_loss": diff_meter.mean}
                 logs.update(loss_logs)
 
                 # update metrics logs
@@ -243,12 +262,12 @@ class SegModel(object):
                     s = format_logs(logs)
                     iterator.set_postfix_str(s)
 
-                # if phase == 'train':
-                #     loss_.backward()
-                #     self.optimizer.step()
+                if phase == 'train':
+                    loss_.backward()
+                    self.optimizer.step()
 
-                #     if self.cfg.model.use_lr_scheduler:
-                #         self.lr_scheduler.step()
+                    if self.cfg.model.use_lr_scheduler:
+                        self.lr_scheduler.step()
 
             return logs
 ##############################################################
@@ -274,7 +293,7 @@ def set_random_seed(seed, deterministic=False):
         torch.backends.cudnn.benchmark = False
 
 
-@hydra.main(config_path="./config", config_name="s1s2_unet")
+@hydra.main(config_path="./config", config_name="s1s2_fcnn4cd")
 def run_app(cfg : DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
 
