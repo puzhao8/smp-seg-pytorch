@@ -39,7 +39,7 @@ f_score = smp.utils.functional.f_score
 
 # Dice/F1 score - https://en.wikipedia.org/wiki/S%C3%B8rensen%E2%80%93Dice_coefficient
 # IoU/Jaccard score - https://en.wikipedia.org/wiki/Jaccard_index
-diceLoss = smp.utils.losses.DiceLoss(eps=1, activation='argmax2d')
+diceLoss = smp.utils.losses.DiceLoss(eps=1)
 AverageValueMeter =  smp.utils.train.AverageValueMeter
 
 # Augmentations
@@ -232,8 +232,8 @@ class SegModel(object):
                     y_pred = self.model.forward((x1, x2))
                     cdc_loss = 0
 
-                y_gt = torch.argmax(y, dim=1)
-                dice_loss_ =  diceLoss(y_pred, y_gt)
+                # y_gt = torch.argmax(y, dim=1)
+                dice_loss_ =  diceLoss(y_pred, y)
                 
                 # focal_loss_ = self.cfg.alpha * focal_loss(y_pred, y)
                 # tv_loss_ = 1e-5 * self.cfg.beta * torch.mean(tv_loss(y_pred))

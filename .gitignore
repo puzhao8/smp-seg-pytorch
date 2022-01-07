@@ -5,6 +5,9 @@ outputs/*
 *.log
 wandb/*
 geo/*.sh
+run_logs/*
+output_V0/*
+fcnn4cd/*
 
 
 

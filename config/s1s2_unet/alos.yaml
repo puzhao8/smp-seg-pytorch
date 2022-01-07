@@ -1,8 +1,0 @@
-#@package _global_
-data:
-    satellites: ['ALOS']
-    prepost: ['pre', 'post']
-    stacking: True
-
-model:
-    ARCH: UNet #FuseUNet, UNet

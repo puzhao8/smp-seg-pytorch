@@ -9,7 +9,6 @@ from easydict import EasyDict as edict
 import torch
 from smp.base import initialization as init
 
-
 class SegmentationModel(torch.nn.Module):
 
     def initialize(self):
@@ -63,7 +62,7 @@ class SegmentationModel(torch.nn.Module):
 
 
 
-class FuseUnet(SegmentationModel):
+class SiamResUnet(SegmentationModel):
     """Unet_ is a fully convolution neural network for image semantic segmentation. Consist of *encoder* 
     and *decoder* parts connected with *skip connections*. Encoder extract features of different spatial 
     resolution (skip connections) which are used by decoder to define accurate segmentation mask. Use *concatenation*

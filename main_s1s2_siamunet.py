@@ -265,7 +265,7 @@ def set_random_seed(seed, deterministic=False):
         torch.backends.cudnn.benchmark = False
 
 
-@hydra.main(config_path="./config", config_name="s1s2_fcnn4cd")
+@hydra.main(config_path="./config", config_name="siam_unet")
 def run_app(cfg : DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
 

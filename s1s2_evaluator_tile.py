@@ -6,15 +6,10 @@ from imageio import imread, imsave
 import torch
 import numpy as np
 from tqdm import tqdm
-
 from pathlib import Path
 import tifffile as tiff
-from easydict import EasyDict as edict
-
 import smp
-from smp.base.modules import Activation
-
-
+from easydict import EasyDict as edict
 
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap, LinearSegmentedColormap
@@ -75,10 +70,10 @@ def inference(model, test_dir, test_id, cfg):
         post_image = post_image[cfg.band_index_dict[sat],] # select bands
 
         if sat in ['S1', 'ALOS']: post_image = (np.clip(post_image, -30, 0) + 30) / 30
-        post_image_pad = image_padding(post_image, patchsize)
+        # post_image_pad = image_padding(post_image, patchsize)
 
         # img_preprocessed = self.preprocessing_fn(img_pad)
-        post_image_tensor = torch.from_numpy(post_image_pad).unsqueeze(0) # n * C * H * W
+        post_image_tensor = torch.from_numpy(post_image).unsqueeze(0) # n * C * H * W
         
         if 'pre' in cfg.data.prepost:
             pre_url = test_dir / sat / "pre" / f"{test_id}.tif"
@@ -87,77 +82,57 @@ def inference(model, test_dir, test_id, cfg):
 
             if sat in ['S1', 'ALOS']: pre_image = (np.clip(pre_image, -30, 0) + 30) / 30
 
-            pre_image_pad = image_padding(pre_image, patchsize)
-            pre_image_tensor = torch.from_numpy(pre_image_pad).unsqueeze(0) # n * C * H * W
+            # pre_image_pad = image_padding(pre_image, patchsize)
+            pre_image_tensor = torch.from_numpy(pre_image).unsqueeze(0) # n * C * H * W
         
             input_tensors.append((pre_image_tensor, post_image_tensor))
 
         else:
             input_tensors.append(post_image_tensor)
 
-    C, H, W = post_image.shape
-    _, _, Height, Width = input_tensors[0][0].shape
-    pred_mask_pad = np.zeros((Height, Width))
-    prob_mask_pad = np.zeros((NUM_CLASS, Height, Width))
-
-    input_patchsize = 2 * patchsize
-    padSize = int(patchsize/2) 
-    for i in tqdm(range(0, Height - input_patchsize + 1, patchsize)):
-        for j in range(0, Width - input_patchsize + 1, patchsize):
-            # print(i, i+input_patchsize, j, j+input_patchsize)
-
-            ''' ------------> tile input data <---------- '''
-            input_patchs = []
-            for sat_tensor in input_tensors:
-                post_patch = (sat_tensor[1][..., i:i+input_patchsize, j:j+input_patchsize]).type(torch.cuda.FloatTensor)
-                if 'pre' in cfg.data.prepost: 
-                    pre_patch = (sat_tensor[0][..., i:i+input_patchsize, j:j+input_patchsize]).type(torch.cuda.FloatTensor)
-                    
-                    if cfg.data.stacking: 
-                        inputPatch = torch.cat([pre_patch, post_patch], dim=1) # stacked inputs
-                        input_patchs.append(inputPatch)
-                    else:
-                        input_patchs += [pre_patch, post_patch]
-                else:
-                    input_patchs.append(post_patch)
-
-            ''' ------------> apply model <--------------- '''
-            if 'UNet' == cfg.model.ARCH:
-                # print(input_patchs[0].shape)
-                predPatch = model.forward(input_patchs[0])
-
-            elif 'SiamResUNet' in cfg.model.ARCH:
-                predPatch, decoder_out = model.forward(input_patchs, False)
-
-            elif 'cdc_unet' in cfg.model.ARCH:
-                predPatch, decoder_out = model.forward(input_patchs, False)
+    ''' ------------> tile input data <---------- '''
+    input_patchs = []
+    for sat_tensor in input_tensors:
+        post_patch = (sat_tensor[1]).type(torch.cuda.FloatTensor)
+        if 'pre' in cfg.data.prepost: 
+            pre_patch = (sat_tensor[0]).type(torch.cuda.FloatTensor)
             
-            else: # UNet
-                predPatch = model.forward(input_patchs)
-            ''' ------------------------------------------ '''
-
-            # predPatch = decoder_out[1].squeeze().cpu().detach().numpy()#.round()
-            # predLabel = 1 - np.argmax(predPatch, axis=0).squeeze()
-            activation = Activation(name=cfg.model.ACTIVATION)
-            predPatch = activation(predPatch)
-
-            predPatch = predPatch.cpu().detach().numpy()#.round()
-            
-            if predPatch.shape[0] > 1:
-                predLabel = np.argmax(predPatch, axis=0).squeeze()
-                prob_mask_pad[:, i+padSize:i+padSize+patchsize, j+padSize:j+padSize+patchsize] = predPatch[:, padSize:padSize+patchsize, padSize:padSize+patchsize]  # need to modify
+            if cfg.data.stacking: 
+                inputPatch = torch.cat([pre_patch, post_patch], dim=1) # stacked inputs
+                input_patchs.append(inputPatch)
             else:
-                predPatch = predPatch.squeeze()
-                predLabel = np.round(predPatch)
-                # print(predLabel.shape)
-                prob_mask_pad[:, i+padSize:i+padSize+patchsize, j+padSize:j+padSize+patchsize] = predPatch[padSize:padSize+patchsize, padSize:padSize+patchsize]  # need to modify
+                input_patchs += [pre_patch, post_patch]
+        else:
+            input_patchs.append(post_patch)
 
-            pred_mask_pad[i+padSize:i+padSize+patchsize, j+padSize:j+padSize+patchsize] = predLabel[padSize:padSize+patchsize, padSize:padSize+patchsize]  # need to modify
-            
-    pred_mask = pred_mask_pad[padSize:padSize+H, padSize:padSize+W] # clip back to original shape
-    prod_mask = prob_mask_pad[:, padSize:padSize+H, padSize:padSize+W] # clip back to original shape
+    ''' ------------> apply model <--------------- '''
+    if 'Paddle_unet' == cfg.model.ARCH:
+        predPatch = model.forward(input_patchs[0])
 
-    return pred_mask, prod_mask
+    elif 'FuseUNet' in cfg.model.ARCH:
+        predPatch, decoder_out = model.forward(input_patchs, False)
+
+    elif 'cdc_unet' in cfg.model.ARCH:
+        predPatch, decoder_out = model.forward(input_patchs, False)
+    
+    else:
+        predPatch = model.forward(input_patchs)
+    ''' ------------------------------------------ '''
+
+    # predPatch = decoder_out[1].squeeze().cpu().detach().numpy()#.round()
+    # predLabel = 1 - np.argmax(predPatch, axis=0).squeeze()
+    
+    predPatch = torch.sigmoid(predPatch)
+    predPatch = predPatch.cpu().detach().numpy()#.round()
+    if predPatch.shape[0] > 1:
+        pred_mask = np.argmax(predPatch, axis=0).squeeze()
+        probility_mask = predPatch[1,]
+
+    else:
+        pred_mask = np.round(predPatch.squeeze())
+        probility_mask = predPatch.squeeze()
+    
+    return pred_mask, probility_mask
 
 def gen_errMap(grouthTruth, preMap, save_url=False):
     errMap = np.zeros(preMap.shape)
@@ -186,7 +161,7 @@ def gen_errMap(grouthTruth, preMap, save_url=False):
 def apply_model_on_event(model, test_id, output_dir, cfg):
     output_dir = Path(output_dir)
     output_dir.mkdir(exist_ok=True)
-    data_dir = Path(cfg.data.dir) / "test_images"
+    data_dir = Path(cfg.data.dir) / "test"
 
     # orbKeyLen = len(test_id.split("_")[-1]) + 1 
     # event = test_id[:-orbKeyLen]
@@ -204,8 +179,8 @@ def apply_model_on_event(model, test_id, output_dir, cfg):
     # # [0,100/255,0]
     # mtbs_palette = [[0,100/255,0], [127/255,1,212/255], [1,1,0], [1,0,0], [127/255,1,0], [1,1,1]]
 
-    plt.imsave(output_dir / f"{test_id}_pred.png", predMask, cmap='gray', vmin=0, vmax=1)
-    # plt.imsave(output_dir / f"{test_id}_probMap.png", predMask, cmap='gray', vmin=0, vmax=1)
+    plt.imsave(output_dir / f"{test_id}_predLabel.png", predMask, cmap='gray', vmin=0, vmax=1)
+    plt.imsave(output_dir / f"{test_id}_probMap.png", predMask, cmap='gray', vmin=0, vmax=1)
 
         # read and save true labels
     if os.path.isfile(data_dir / "mask" / "poly" / f"{event}.tif"):
@@ -216,7 +191,7 @@ def apply_model_on_event(model, test_id, output_dir, cfg):
         trueLabel = trueLabel.squeeze()
         # print(trueLabel.shape, predMask.shape)
 
-        plt.imsave(output_dir / f"{test_id}_gts.png", trueLabel, cmap='gray', vmin=0, vmax=1)
+        plt.imsave(output_dir / f"{test_id}_trueLabel.png", trueLabel, cmap='gray', vmin=0, vmax=1)
         gen_errMap(trueLabel, predMask, save_url=output_dir / f"{test_id}.png")
 
 
@@ -228,7 +203,7 @@ def evaluate_model(cfg, model_url, output_dir):
     #     split_dict = json.load(json_file)
     # test_id_list = split_dict['test']['sarname']
 
-    test_id_list = os.listdir(Path(cfg.data.dir) / "test_images" / "S2" / "post")
+    test_id_list = os.listdir(Path(cfg.data.dir) / "test" / "S2" / "post")
     test_id_list = [test_id[:-4] for test_id in test_id_list]
     print(test_id_list[0])
 
@@ -249,7 +224,7 @@ import hydra
 import wandb
 from omegaconf import DictConfig, OmegaConf
 
-@hydra.main(config_path="./config", config_name="unet")
+@hydra.main(config_path="./config", config_name="s1s2_unet")
 def run_app(cfg : DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
 
@@ -272,9 +247,9 @@ def run_app(cfg : DictConfig) -> None:
     # for test_id in test_id_list:
     #     apply_model_on_event(model, test_id, output_dir, satellites=['S1', 'S2'])
 
-    run_dir = Path("/home/p/u/puzhao/smp-seg-pytorch/outputs/run_s1s2_UNet_resnet18_['S2']_TEST_20220107T175600")
+    run_dir = Path("/home/p/u/puzhao/smp-seg-pytorch/outputs/run_s1s2_Paddle_unet_resnet18_['S1']_V0_20211225T005247")
     model_url = run_dir / "model.pth"
-    output_dir = run_dir / "errMap"
+    output_dir = run_dir / "errMap_train"
     evaluate_model(cfg, model_url, output_dir)
     
     #########################################################################

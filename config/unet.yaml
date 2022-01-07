@@ -1,14 +1,21 @@
+
+# defaults:
+#     - s1s2_unet: s1
+
 project:
-    name: s1s2-snic-test
+    name: s1s2-snic-fresh
     entity: wildfire
 
 data:
-    name: s1s2
-    satellites: ['S2']
-    prepost: ['pre', 'post']
-    stacking: False
-    dir: /cephyr/NOBACKUP/groups/snic2021-7-104/wildfire-s1s2-dataset-ca-tiles
+    # dir: /cephyr/NOBACKUP/groups/snic2021-7-104/wildfire-s1s2-dataset-ak-tiles
+    # dir: /cephyr/NOBACKUP/groups/snic2021-7-104/wildfire-s1s2-dataset-ca-tiles
     # dir: D:\wildfire-s1s2-dataset-ak-tiles
+    dir: /home/p/u/puzhao/wildfire-s1s2-dataset-ca-tiles
+
+    name: s1s2
+    satellites: ['S1']
+    prepost: ['pre', 'post']
+    stacking: True # stack bi-temporal data
 
     ALL_BANDS:
         S1: ['ND', 'VH', 'VV']
@@ -24,20 +31,24 @@ data:
     SEED: 42
     random_state: 42
 
-    CLASSES: ['unburn', 'burned']
+    # CLASSES: ['unburn', 'burned']
+    CLASSES: ['burned']
     REF_MASK: poly
-
-    USE_PRE_IMG: True
+    
+    # USE_PRE_IMG: True
 
 model:
-    ARCH: Paddle_unet #SiamUnet_conc #FuseUNet, UNet
+    ARCH: UNet #FuseUNet, UNet
+    TOPO: [16, 32, 64, 128]
+    # LOSS_TYPE: SoftDiceLoss
+
     ACTIVATION: sigmoid
     ENCODER: resnet18 # 'mobilenet_v2'
     ENCODER_WEIGHTS: imagenet
 
     train_ratio: 0.8
-    max_epoch: 100
-    batch_size: 32
+    max_epoch: 20
+    batch_size: 64
     learning_rate: 1e-4
     weight_decay: 1e-4
     cross_domain_coef: 0
@@ -53,8 +64,8 @@ eval:
     patchsize: 512
 
 experiment:
-    note: ${data.satellites}
-    name: ${data.name}_${model.ARCH}_${experiment.note}
+    note: TEST
+    name: ${data.name}_${model.ARCH}_${data.satellites}_${experiment.note}
     output: ./outputs/run_${experiment.name}_${now:%Y%m%dT%H%M%S} #${defaults.0.data}
 
 hydra:

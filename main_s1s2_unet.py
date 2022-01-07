@@ -32,14 +32,16 @@ import logging
 logger = logging.getLogger(__name__)
 
 import smp
-from models.net_arch import init_model
+from smp.base.modules import Activation
+from models.model_selection import get_model
 import wandb
 
 f_score = smp.utils.functional.f_score
-
 # Dice/F1 score - https://en.wikipedia.org/wiki/S%C3%B8rensen%E2%80%93Dice_coefficient
 # IoU/Jaccard score - https://en.wikipedia.org/wiki/Jaccard_index
 diceLoss = smp.utils.losses.DiceLoss(eps=1)
+from models.loss_ref import soft_dice_loss, soft_dice_loss_balanced, jaccard_like_loss, jaccard_like_balanced_loss
+
 AverageValueMeter =  smp.utils.train.AverageValueMeter
 
 # Augmentations
@@ -65,25 +67,50 @@ class SegModel(object):
         self.cfg = cfg
         self.DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-        self.model = init_model(cfg)
+        self.model = get_model(cfg)
+        self.activation = Activation(cfg.model.ACTIVATION)
+
         # self.model_url = str(self.project_dir / "outputs" / "best_model.pth")
         self.rundir = self.project_dir / self.cfg.experiment.output
         self.model_url = str( self.rundir / "model.pth")
 
-        self.preprocessing_fn = \
-            smp.encoders.get_preprocessing_fn(cfg.model.ENCODER, cfg.model.ENCODER_WEIGHTS)
+        if cfg.model.ENCODER is not None:
+            self.preprocessing_fn = \
+                smp.encoders.get_preprocessing_fn(cfg.model.ENCODER, cfg.model.ENCODER_WEIGHTS)
 
         self.metrics = [smp.utils.metrics.IoU(threshold=0.5),
                         smp.utils.metrics.Fscore()
                     ]
 
-        ''' -------------> need to improve <-----------------'''
+        '''--------------> need to improve <-----------------'''
         # specify data folder
         self.train_dir = Path(self.cfg.data.dir) / 'train'
         self.valid_dir = Path(self.cfg.data.dir) / 'test'
         '''--------------------------------------------------'''
 
+    def loss_fun(self):
+        cfg = self.cfg
+        if cfg.model.LOSS_TYPE == 'BCEWithLogitsLoss':
+            criterion = nn.BCEWithLogitsLoss()
+        elif cfg.model.LOSS_TYPE == 'CrossEntropyLoss':
+            balance_weight = [cfg.MODEL.NEGATIVE_WEIGHT, cfg.MODEL.POSITIVE_WEIGHT]
+            balance_weight = torch.tensor(balance_weight).float().to(self.DEVICE)
+            criterion = nn.CrossEntropyLoss(weight = balance_weight)
+        elif cfg.model.LOSS_TYPE == 'SoftDiceLoss':
+            criterion = soft_dice_loss 
+        elif cfg.model.LOSS_TYPE == 'SoftDiceBalancedLoss':
+            criterion = soft_dice_loss_balanced
+        elif cfg.model.LOSS_TYPE == 'JaccardLikeLoss':
+            criterion = jaccard_like_loss
+        elif cfg.model.LOSS_TYPE == 'ComboLoss':
+            criterion = lambda pred, gts: F.binary_cross_entropy_with_logits(pred, gts) + soft_dice_loss(pred, gts)
+        elif cfg.model.LOSS_TYPE == 'WeightedComboLoss':
+            criterion = lambda pred, gts: F.binary_cross_entropy_with_logits(pred, gts) + 10 * soft_dice_loss(pred, gts)
+        elif cfg.model.LOSS_TYPE == 'FrankensteinLoss':
+            criterion = lambda pred, gts: F.binary_cross_entropy_with_logits(pred, gts) + jaccard_like_balanced_loss(pred, gts)
 
+        return criterion
+    
     def get_dataloaders(self) -> dict:
 
         """ Data Preparation """
@@ -155,7 +182,7 @@ class SegModel(object):
             if valid_logs['iou_score'] > max_score:
                 max_score = valid_logs['iou_score']
 
-                if (1 == epoch) or (0 == epoch % self.cfg.model.save_interval):
+                if (1 == epoch) or (0 == (epoch % self.cfg.model.save_interval)):
                     torch.save(self.model, self.model_url)
                     # torch.save(self.model.state_dict(), self.model_url)
                     print('Model saved!')
@@ -186,7 +213,6 @@ class SegModel(object):
             if phase == 'valid': self.valid_logs = logs
 
 
-
     def step(self, phase) -> dict:
         logs = {}
         loss_meter = AverageValueMeter()
@@ -207,14 +233,18 @@ class SegModel(object):
                 x, y = x.to(self.DEVICE), y.to(self.DEVICE)
                 self.optimizer.zero_grad()
 
-                y_pred = self.model.forward(x)
+                out = self.model.forward(x)
+                y_pred = self.activation(out)
 
-                # y_gt = torch.argmax(y, dim=1)
-                dice_loss_ =  diceLoss(y_pred, y)
+                # y = torch.argmax(y, dim=1)
+                # dice_loss_ =  diceLoss(y_pred, y)
                 # focal_loss_ = self.cfg.alpha * focal_loss(y_pred, y)
                 # tv_loss_ = 1e-5 * self.cfg.beta * torch.mean(tv_loss(y_pred))
 
-                loss_ = dice_loss_
+                # print(y_pred.shape, y.shape)
+                # criterion = self.loss_fun()
+                
+                loss_ = diceLoss(y_pred, y)
 
                 if phase == 'train':
                     loss_.backward()
@@ -274,7 +304,7 @@ def set_random_seed(seed, deterministic=False):
         torch.backends.cudnn.benchmark = False
 
 
-@hydra.main(config_path="./config", config_name="s1s2_unet")
+@hydra.main(config_path="./config", config_name="unet")
 def run_app(cfg : DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
 

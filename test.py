@@ -44,11 +44,17 @@
 # print(f"post: {post_image.shape}")
 # print(post_image.min(), post_image.max())
 
-import os
-print(len(os.listdir("/cephyr/NOBACKUP/groups/snic2021-7-104/wildfire-s1s2-dataset-ca-tiles/test/S2/pre")))
-print(len(os.listdir("/cephyr/NOBACKUP/groups/snic2021-7-104/wildfire-s1s2-dataset-ca-tiles/test/S2/post")))
-print(len(os.listdir("/cephyr/NOBACKUP/groups/snic2021-7-104/wildfire-s1s2-dataset-ca-tiles/test/S1/pre")))
-print(len(os.listdir("/cephyr/NOBACKUP/groups/snic2021-7-104/wildfire-s1s2-dataset-ca-tiles/test/S1/post")))
+# import os
+# print(len(os.listdir("/cephyr/NOBACKUP/groups/snic2021-7-104/wildfire-s1s2-dataset-ca-tiles/test/S2/pre")))
+# print(len(os.listdir("/cephyr/NOBACKUP/groups/snic2021-7-104/wildfire-s1s2-dataset-ca-tiles/test/S2/post")))
+# print(len(os.listdir("/cephyr/NOBACKUP/groups/snic2021-7-104/wildfire-s1s2-dataset-ca-tiles/test/S1/pre")))
+# print(len(os.listdir("/cephyr/NOBACKUP/groups/snic2021-7-104/wildfire-s1s2-dataset-ca-tiles/test/S1/post")))
 
 # print(set(os.listdir("/cephyr/NOBACKUP/groups/snic2021-7-104/wildfire-s1s2-dataset-ca-tiles/train/S2/post"))-\
 # set(set(os.listdir("/cephyr/NOBACKUP/groups/snic2021-7-104/wildfire-s1s2-dataset-ca-tiles/train/S1/post"))))
+
+
+
+
+
+
