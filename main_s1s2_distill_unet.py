@@ -32,17 +32,19 @@ import logging
 logger = logging.getLogger(__name__)
 
 import smp
-from smp.base.modules import Activation
 from models.model_selection import get_model
 import wandb
 
 f_score = smp.utils.functional.f_score
+
 # Dice/F1 score - https://en.wikipedia.org/wiki/S%C3%B8rensen%E2%80%93Dice_coefficient
 # IoU/Jaccard score - https://en.wikipedia.org/wiki/Jaccard_index
 diceLoss = smp.utils.losses.DiceLoss(eps=1)
-from models.loss_ref import soft_dice_loss, soft_dice_loss_balanced, jaccard_like_loss, jaccard_like_balanced_loss
+mse_loss = nn.MSELoss(reduction='mean')
 
 AverageValueMeter =  smp.utils.train.AverageValueMeter
+
+from smp.base.modules import Activation
 
 # Augmentations
 from dataset.augument import get_training_augmentation, \
@@ -72,45 +74,27 @@ class SegModel(object):
 
         # self.model_url = str(self.project_dir / "outputs" / "best_model.pth")
         self.rundir = self.project_dir / self.cfg.experiment.output
-        self.model_url = str( self.rundir / "model.pth")
+        self.model_url = str(self.rundir / "model.pth")
 
-        if cfg.model.ENCODER is not None:
-            self.preprocessing_fn = \
-                smp.encoders.get_preprocessing_fn(cfg.model.ENCODER, cfg.model.ENCODER_WEIGHTS)
+        ''' load S2 pretrained model '''
+        if self.cfg.model.DISTILL:
+            self.S2_model = torch.load(self.cfg.model.S2_PRETRAIN, map_location=torch.device('cpu'))
+            self.S2_model.to(self.DEVICE)
+
+        self.preprocessing_fn = \
+            smp.encoders.get_preprocessing_fn(cfg.model.ENCODER, cfg.model.ENCODER_WEIGHTS)
 
         self.metrics = [smp.utils.metrics.IoU(threshold=0.5),
                         smp.utils.metrics.Fscore()
                     ]
 
-        '''--------------> need to improve <-----------------'''
+        ''' -------------> need to improve <-----------------'''
         # specify data folder
         self.train_dir = Path(self.cfg.data.dir) / 'train'
         self.valid_dir = Path(self.cfg.data.dir) / 'test'
         '''--------------------------------------------------'''
 
-    def loss_fun(self):
-        cfg = self.cfg
-        if cfg.model.LOSS_TYPE == 'BCEWithLogitsLoss':
-            criterion = nn.BCEWithLogitsLoss()
-        elif cfg.model.LOSS_TYPE == 'CrossEntropyLoss':
-            balance_weight = [cfg.MODEL.NEGATIVE_WEIGHT, cfg.MODEL.POSITIVE_WEIGHT]
-            balance_weight = torch.tensor(balance_weight).float().to(self.DEVICE)
-            criterion = nn.CrossEntropyLoss(weight = balance_weight)
-        elif cfg.model.LOSS_TYPE == 'SoftDiceLoss':
-            criterion = soft_dice_loss 
-        elif cfg.model.LOSS_TYPE == 'SoftDiceBalancedLoss':
-            criterion = soft_dice_loss_balanced
-        elif cfg.model.LOSS_TYPE == 'JaccardLikeLoss':
-            criterion = jaccard_like_loss
-        elif cfg.model.LOSS_TYPE == 'ComboLoss':
-            criterion = lambda pred, gts: F.binary_cross_entropy_with_logits(pred, gts) + soft_dice_loss(pred, gts)
-        elif cfg.model.LOSS_TYPE == 'WeightedComboLoss':
-            criterion = lambda pred, gts: F.binary_cross_entropy_with_logits(pred, gts) + 10 * soft_dice_loss(pred, gts)
-        elif cfg.model.LOSS_TYPE == 'FrankensteinLoss':
-            criterion = lambda pred, gts: F.binary_cross_entropy_with_logits(pred, gts) + jaccard_like_balanced_loss(pred, gts)
 
-        return criterion
-    
     def get_dataloaders(self) -> dict:
 
         """ Data Preparation """
@@ -152,6 +136,8 @@ class SegModel(object):
 
 
     def run(self) -> None:
+        self.model.to(self.DEVICE)
+
         self.dataloaders = self.get_dataloaders()
         self.optimizer = torch.optim.Adam([dict(
                 params=self.model.parameters(), 
@@ -182,7 +168,7 @@ class SegModel(object):
             if valid_logs['iou_score'] > max_score:
                 max_score = valid_logs['iou_score']
 
-                if (1 == epoch) or (0 == (epoch % self.cfg.model.save_interval)):
+                if (1 == epoch) or (0 == epoch % self.cfg.model.save_interval):
                     torch.save(self.model, self.model_url)
                     # torch.save(self.model.state_dict(), self.model_url)
                     print('Model saved!')
@@ -192,7 +178,7 @@ class SegModel(object):
                         
         
     def train_one_epoch(self, epoch):
-        self.model.to(self.DEVICE)
+        # self.model.to(self.DEVICE)
         
         # wandb.
         for phase in ['train', 'valid', 'test']:
@@ -213,10 +199,16 @@ class SegModel(object):
             if phase == 'valid': self.valid_logs = logs
 
 
+
     def step(self, phase) -> dict:
         logs = {}
         loss_meter = AverageValueMeter()
         metrics_meters = {metric.__name__: AverageValueMeter() for metric in self.metrics}
+
+        if self.cfg.model.DISTILL:
+            metrics_meters.update({'loss_do': AverageValueMeter()})
+            metrics_meters.update({'loss_df': AverageValueMeter()})
+            metrics_meters.update({'dice_loss': AverageValueMeter()})
 
         # if ('Train' in phase) and (self.cfg.useDataWoCAug):
         #     dataLoader_woCAug = iter(self.dataloaders['Train_woCAug'])
@@ -232,27 +224,27 @@ class SegModel(object):
                 # print(len(input))
 
                 ''' do prediction '''
-                out = self.model.forward(input)[-1]
+                xc, out = self.model.forward(input[:1]) # prediction on S1 or S2
                 y_pred = self.activation(out)
 
-
                 ''' compute loss '''
-                # y = torch.argmax(y, dim=1)
-                # dice_loss_ =  diceLoss(y_pred, y)
-                # focal_loss_ = self.cfg.alpha * focal_loss(y_pred, y)
-                # tv_loss_ = 1e-5 * self.cfg.beta * torch.mean(tv_loss(y_pred))
+                dice_loss_value =  diceLoss(y_pred, y)
 
-                # print(y_pred.shape, y.shape)
-                # criterion = self.loss_fun()
+                if self.cfg.model.DISTILL:
+                    xc2, out2 = self.S2_model.forward(input[1:])
+                    loss_distill_outout = mse_loss(self.activation(out), self.activation(out2))
+                    loss_distill_feat = mse_loss(self.activation(xc), self.activation(xc2))
+
+                    metrics_meters['loss_do'].add(loss_distill_outout.cpu().detach().numpy())
+                    metrics_meters['loss_df'].add(loss_distill_feat.cpu().detach().numpy())
+                    metrics_meters['dice_loss'].add(dice_loss_value.cpu().detach().numpy())
+
+                    loss_ = dice_loss_value + self.cfg.model.LOSS_COEF[0] * loss_distill_outout \
+                        + self.cfg.model.LOSS_COEF[1] * loss_distill_feat
+                    # loss_ = dice_loss_value
+                else:
+                    loss_ = dice_loss_value
                 
-                loss_ = diceLoss(y_pred, y)
-
-                if phase == 'train':
-                    loss_.backward()
-                    self.optimizer.step()
-
-                    if self.cfg.model.use_lr_scheduler:
-                        self.lr_scheduler.step()
 
                 # update loss logs
                 loss_value = loss_.cpu().detach().numpy()
@@ -267,6 +259,7 @@ class SegModel(object):
                     metrics_meters[metric_fn.__name__].add(metric_value)
 
                 metrics_logs = {k: v.mean for k, v in metrics_meters.items()}
+
                 logs.update(metrics_logs)
                 # print(logs)
 
@@ -274,15 +267,16 @@ class SegModel(object):
                     s = format_logs(logs)
                     iterator.set_postfix_str(s)
 
-                # if phase == 'train':
-                #     loss_.backward()
-                #     self.optimizer.step()
+                if phase == 'train':
+                    loss_.backward()
+                    self.optimizer.step()
 
-                #     if self.cfg.model.use_lr_scheduler:
-                #         self.lr_scheduler.step()
+                    if self.cfg.model.use_lr_scheduler:
+                        self.lr_scheduler.step()
 
             return logs
 ##############################################################
+
 
 
 def set_random_seed(seed, deterministic=False):
@@ -304,7 +298,7 @@ def set_random_seed(seed, deterministic=False):
         torch.backends.cudnn.benchmark = False
 
 
-@hydra.main(config_path="./config", config_name="unet")
+@hydra.main(config_path="./config", config_name="distill_unet")
 def run_app(cfg : DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
 

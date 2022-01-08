@@ -32,7 +32,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 import smp
-from models.net_arch import init_model
+from models.model_selection import get_model
 import wandb
 
 f_score = smp.utils.functional.f_score
@@ -41,6 +41,8 @@ f_score = smp.utils.functional.f_score
 # IoU/Jaccard score - https://en.wikipedia.org/wiki/Jaccard_index
 diceLoss = smp.utils.losses.DiceLoss(eps=1)
 AverageValueMeter =  smp.utils.train.AverageValueMeter
+
+from smp.base.modules import Activation
 
 # Augmentations
 from dataset.augument import get_training_augmentation, \
@@ -65,7 +67,9 @@ class SegModel(object):
         self.cfg = cfg
         self.DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-        self.model = init_model(cfg)
+        self.model = get_model(cfg)
+        self.activation = Activation(cfg.model.ACTIVATION)
+
         # self.model_url = str(self.project_dir / "outputs" / "best_model.pth")
         self.rundir = self.project_dir / self.cfg.experiment.output
         self.model_url = str( self.rundir / "model.pth")
@@ -103,7 +107,7 @@ class SegModel(object):
             classes=self.cfg.data.CLASSES,
         )
 
-        train_size = int(len(train_dataset) * self.cfg.model.train_ratio)
+        train_size = int(len(train_dataset) * self.cfg.data.train_ratio)
         valid_size = len(train_dataset) - train_size
         train_set, val_set = torch.utils.data.random_split(train_dataset, [train_size, valid_size])
 
@@ -196,17 +200,18 @@ class SegModel(object):
         #     dataLoader_woCAug = iter(self.dataloaders['Train_woCAug'])
 
         with tqdm(iter(self.dataloaders[phase]), desc=phase, file=sys.stdout, disable=not self.cfg.model.verbose) as iterator:
-            for (x1, x2, y) in iterator:
-
-                # if ('Train' in phase) and (self.cfg.useDataWoCAug):
-                #     x0, y0 = next(dataLoader_woCAug)  
-                #     x = torch.cat((x0, x), dim=0)
-                #     y = torch.cat((y0, y), dim=0)
-
-                x1, x2, y = x1.to(self.DEVICE), x2.to(self.DEVICE), y.to(self.DEVICE)
+            for (x, y) in iterator:
                 self.optimizer.zero_grad()
 
-                y_pred = self.model.forward((x1, x2))
+                ''' move data to GPU '''
+                input = []
+                for x_i in x: input.append(x_i.to(self.DEVICE))
+                y = y.to(self.DEVICE)
+                # print(len(input))
+
+                ''' do prediction '''
+                out = self.model.forward(input)[-1]
+                y_pred = self.activation(out)
 
                 dice_loss_ =  diceLoss(y_pred, y)
                 # focal_loss_ = self.cfg.alpha * focal_loss(y_pred, y)
@@ -265,7 +270,7 @@ def set_random_seed(seed, deterministic=False):
         torch.backends.cudnn.benchmark = False
 
 
-@hydra.main(config_path="./config", config_name="siam_unet")
+@hydra.main(config_path="./config", config_name="siam_unet_bitemoral")
 def run_app(cfg : DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
 

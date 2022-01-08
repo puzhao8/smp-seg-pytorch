@@ -3,7 +3,7 @@
 #     - s1s2_unet: s1
 
 project:
-    name: s1s2-snic-fresh
+    name: IGARSS-2022
     entity: wildfire
 
 data:
@@ -25,7 +25,8 @@ data:
     INPUT_BANDS:
         S1: ['ND', 'VH', 'VV']
         ALOS: ['ND', 'VH', 'VV']
-        S2: ['B8', 'B11', 'B12']
+        S2: ['B2', 'B3', 'B4', 'B8', 'B11', 'B12'] #['B4', 'B8', 'B12']
+        # S2: ['B3', 'B8', 'B12'] #['B4', 'B8', 'B12']
 
     useDataWoCAug: False
     SEED: 42
@@ -34,8 +35,7 @@ data:
     # CLASSES: ['unburn', 'burned']
     CLASSES: ['burned']
     REF_MASK: poly
-    
-    # USE_PRE_IMG: True
+    train_ratio: 0.9
 
 model:
     ARCH: UNet #FuseUNet, UNet
@@ -46,8 +46,7 @@ model:
     ENCODER: resnet18 # 'mobilenet_v2'
     ENCODER_WEIGHTS: imagenet
 
-    train_ratio: 0.8
-    max_epoch: 20
+    max_epoch: 100
     batch_size: 64
     learning_rate: 1e-4
     weight_decay: 1e-4
@@ -64,7 +63,7 @@ eval:
     patchsize: 512
 
 experiment:
-    note: TEST
+    note: 
     name: ${data.name}_${model.ARCH}_${data.satellites}_${experiment.note}
     output: ./outputs/run_${experiment.name}_${now:%Y%m%dT%H%M%S} #${defaults.0.data}
 

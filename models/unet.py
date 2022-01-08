@@ -58,7 +58,8 @@ class UNet(nn.Module):
         super().__init__()
 
         self.encode = Encoder(input_channels, topo=topo)
-        self.decode = Decoder(align_corners, use_deconv=use_deconv, topo=topo)
+        decoder_topo = topo[::-1]
+        self.decode = Decoder(align_corners, use_deconv=use_deconv, topo=decoder_topo)
         self.cls = self.conv = nn.Conv2d(
             in_channels=topo[0],
             out_channels=num_classes,
@@ -73,8 +74,8 @@ class UNet(nn.Module):
         # self.init_weight()
 
     def forward(self, x):
-        # x = torch.cat((x1, x2), dim=1)
-        # x = torch.cat(x, dim=1)
+        ''' x should be a list or tuple '''
+        x = torch.cat(x, dim=1) # concat all input tensors
 
         logit_list = []
         xc, short_cuts = self.encode(x)
@@ -85,16 +86,14 @@ class UNet(nn.Module):
 
         x = self.decode(xc, short_cuts)
         x = self.cls(x) # output
-        # logit_list.append(x)
+        logit_list.append(x)
 
-        # logit = self.sigmoid(x)
-        # logit_list.append(logit)
-        return x
+        return logit_list
 
 
 
 class Encoder(nn.Module):
-    def __init__(self, input_channels=3, topo=[64,128,256,512]):
+    def __init__(self, input_channels=3, topo=[16, 32, 64, 128]):
         super().__init__()
 
         self.double_conv = nn.Sequential(
@@ -135,17 +134,16 @@ class Encoder(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, align_corners, use_deconv=False, topo=[64,128,256,512]):
+    def __init__(self, align_corners, use_deconv=False, topo=[16, 32, 64, 128]):
         super().__init__()
 
         # up_channels = [[512, 256], [256, 128], [128, 64], [64, 64]]
         # [512, 256, 128, 64512]
         up_channels = []
-        decoder_topo = topo[::-1]
-        for i in range(0, len(decoder_topo)):
-            if i < len(decoder_topo)-1: up_channels.append([decoder_topo[i], decoder_topo[i+1]])
-            else: up_channels.append([decoder_topo[i], decoder_topo[i]])
-        # print(up_channels)
+        for i in range(0, len(topo)):
+            if i < len(topo)-1: up_channels.append([topo[i], topo[i+1]])
+            else: up_channels.append([topo[i], topo[i]])
+        print(up_channels)
 
         self.upLayerList = [
             UpSampling(channel[0], channel[1], align_corners, use_deconv)
@@ -238,7 +236,7 @@ if __name__ == "__main__":
     import numpy as np
     from torchsummary import summary
 
-    x1 = np.random.rand(32,6,256,256)
+    x1 = np.random.rand(10,6,256,256)
     # x2 = np.random.rand(10,3,256,256)
     x1 = torch.from_numpy(x1).type(torch.FloatTensor)#.cuda().type(torch.cuda.FloatTensor)
     # x2 = torch.from_numpy(x2).type(torch.FloatTensor)#.cuda().type(torch.cuda.FloatTensor)
@@ -247,5 +245,5 @@ if __name__ == "__main__":
     # myunet.cuda()
 
     # print(myunet)
-    print(myunet.forward(x1).shape)
+    print(myunet.forward([x1])[-1].shape)
     # summary(myunet, (3,256,256))

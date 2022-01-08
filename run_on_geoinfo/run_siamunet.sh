@@ -4,7 +4,7 @@
 #SBATCH --mem 36GB
 #SBATCH --cpus-per-task 8
 #SBATCH -t 7-00:00:00
-#SBATCH --job-name unet-S1S2-EF
+#SBATCH --job-name test-xy
 #SBATCH --output /home/p/u/puzhao/smp-seg-pytorch/run_logs/%x-%A_%a.out
 
 echo "start"
@@ -24,7 +24,7 @@ nvidia-smi
 # echo "Running simulation $CFG"
 
 # # Choose different sensors
-SAT=('ND' 'VH' 'VV')
+SAT=('SiamUnet_conc' 'SiamUnet_diff')
 CFG=${SAT[$SLURM_ARRAY_TASK_ID]}
 echo "Running simulation $CFG"
 # echo "python3 main_s1s2_unet.py model.batch_size=32"
@@ -34,30 +34,35 @@ echo "--------------------------------------------------------------------------
 conda activate pytorch
 PYTHONUNBUFFERED=1; 
 
-# python3 main_s1s2_unet.py \
-#             data.satellites=['S2'] \
-#             data.INPUT_BANDS.S2=['B4','B8','B12']\
-#             model.ARCH=UNet \
-#             model.batch_size=16 \
-#             model.max_epoch=100 \
-#             experiment.note=B4812
+# sbatch --array=0-1 run_on_geoinfo/run_siamunet.sh
 
-# sbatch run_on_geoinfo/run_unet.sh
-# python3 main_s1s2_unet.py \
-#             --config-name=unet \
-#             data.satellites=['S1'] \
-#             model.ARCH=UNet \
+# # SiamUnet-S2
+python3 main_s1s2_siamunet_bitemporal.py \
+            data.satellites=['S2'] \
+            model.ARCH=$CFG \
+            model.SHARE_ENCODER=True \
+            model.batch_size=16 \
+            model.max_epoch=100 \
+            experiment.note=allBands
+
+# # SiamUnet-S1
+python3 main_s1s2_siamunet_bitemporal.py \
+            data.satellites=['S1'] \
+            data.INPUT_BANDS.S1=['ND','VH','VV'] \
+            model.ARCH=$CFG \
+            model.SHARE_ENCODER=True \
+            model.batch_size=16 \
+            model.max_epoch=5 \
+            experiment.note=allBands
+
+# # SiamUnet-S1S2
+# python3 main_s1s2_siamunet_multisensor.py \
+#             data.satellites=['S1','S2'] \
+#             data.stacking=True \
+#             model.ARCH=$CFG \
 #             model.batch_size=16 \
 #             model.max_epoch=5 \
 #             experiment.note=test
-
-python3 main_s1s2_unet.py \
-            data.satellites=['S1','S2'] \
-            data.INPUT_BANDS.S2=['B4','B8','B12'] \
-            model.ARCH=UNet \
-            model.batch_size=16 \
-            model.max_epoch=100 \
-            experiment.note=EF
 
 #rm -rf $SLURM_SUBMIT_DIR/*.log
 # rm -rf $SLURM_SUBMIT_DIR/*.out

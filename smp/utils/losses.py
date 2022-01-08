@@ -5,7 +5,7 @@ from . import base
 from . import functional as F
 from ..base.modules import Activation
 
-
+# IoU Loss
 class JaccardLoss(base.Loss):
 
     def __init__(self, eps=1., activation=None, ignore_channels=None, **kwargs):

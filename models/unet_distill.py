@@ -29,7 +29,7 @@ import torch.nn.functional as F
 
 
 # @manager.MODELS.add_component
-class SiamUnet_conc(nn.Module):
+class UNet(nn.Module):
     """
     The UNet implementation based on PaddlePaddle.
 
@@ -47,152 +47,61 @@ class SiamUnet_conc(nn.Module):
     """
 
     def __init__(self,
-                 input_channels=6,
-                 num_classes=1,
-                #  topo=[64, 128, 256, 512],
-                #  topo=[32, 64, 128, 256],
-                 topo=[16, 32, 64, 128],
-                 align_corners=False,
-                 use_deconv=False,
-                 pretrained=None,
-                 share_encoder=True):
+            input_channels=6,
+            num_classes=2,
+            # topo=[64, 128, 256, 512],
+            topo=[16, 32, 64, 128],
+            # topo=[16, 32, 64],
+            align_corners=False,
+            use_deconv=False,
+            pretrained=None):
         super().__init__()
 
-        self.share_encoder = share_encoder
         self.encode = Encoder(input_channels, topo=topo)
-        if not self.share_encoder:
-            self.encode_2 = Encoder(input_channels, topo=topo)
-
         decoder_topo = topo[::-1]
-        # decoder_topo = [3*de_topo for de_topo in decoder_topo]
-        self.decode = Decoder(align_corners, use_deconv=use_deconv, topo=decoder_topo, multiplyer=3)
+        self.decode = Decoder(align_corners, use_deconv=use_deconv, topo=decoder_topo)
         self.cls = self.conv = nn.Conv2d(
-            in_channels=topo[0], # *3 only for SiamUnet_conc
+            in_channels=topo[0],
             out_channels=num_classes,
             kernel_size=3,
             stride=1,
             padding=1)
 
-        # self.softmax = nn.Softmax(dim=1)
         # self.sigmoid = nn.Sigmoid()
+        # self.softmax = nn.Softmax(dim=1)
 
         # self.pretrained = pretrained
         # self.init_weight()
 
-        print(f"Encoder TOPO: ", topo)
-        # print(f"Decoder TOPO: ", decoder_topo)
-
-    def forward(self, x, train=True):
-        ''' x1, x2 should come from different sensor, or different time '''
-        x1, x2 = x
+    def forward(self, x):
+        ''' x should be a list or tuple '''
+        x = torch.cat(x, dim=1) # concat all input tensors
 
         logit_list = []
+        xc, short_cuts = self.encode(x)
+        logit_list.append(xc) # most center features
 
-        if not self.share_encoder: encoder_2 = self.encode_2
-        else: encoder_2 = self.encode
+        # for shortcut in short_cuts:
+        #     print(shortcut.shape)
 
-        _, short_cuts1 = self.encode(x1)
-        x, short_cuts2 = encoder_2(x2)
-        # print(x.shape)
-
-        # xc = torch.cat((xc, short_cuts1[-1], short_cuts2[-1]), dim=1)
-        short_cut = []
-        for cut1, cut2 in zip(short_cuts1, short_cuts2):
-            stacked_feat = torch.cat((cut1, cut2), dim=1)
-            short_cut.append(stacked_feat)
-
-        x = self.decode(x, short_cut)
-        # print(x.shape)
+        x = self.decode(xc, short_cuts)
         x = self.cls(x) # output
         logit_list.append(x)
 
-        # logit = nn.LogSoftmax(dim=1)(x)
+        # logit = self.sigmoid(x)
         # logit_list.append(logit)
         return logit_list
 
-class SiamUnet_diff(nn.Module):
-    """
-    The UNet implementation based on PaddlePaddle.
-
-    The original article refers to
-    Olaf Ronneberger, et, al. "U-Net: Convolutional Networks for Biomedical Image Segmentation"
-    (https://arxiv.org/abs/1505.04597).
-
-    Args:
-        num_classes (int): The unique number of target classes.
-        align_corners (bool): An argument of F.interpolate. It should be set to False when the output size of feature
-            is even, e.g. 1024x512, otherwise it is True, e.g. 769x769.  Default: False.
-        use_deconv (bool, optional): A bool value indicates whether using deconvolution in upsampling.
-            If False, use resize_bilinear. Default: False.
-        pretrained (str, optional): The path or url of pretrained model for fine tuning. Default: None.
-    """
-
-    def __init__(self,
-                 input_channels=6,
-                 num_classes=1,
-                #  topo=[64, 128, 256, 512],
-                #  topo=[32, 64, 128, 256],
-                 topo=[16, 32, 64, 128],
-                 align_corners=False,
-                 use_deconv=False,
-                 pretrained=None,
-                 share_encoder=True):
-        super().__init__()
-
-        self.share_encoder = share_encoder
-        self.encode = Encoder(input_channels, topo=topo)
-        if not self.share_encoder:
-            self.encode_2 = Encoder(input_channels, topo=topo)
-
-        decoder_topo = topo[::-1]
-        # decoder_topo = [3*de_topo for de_topo in decoder_topo]
-        self.decode = Decoder(align_corners, use_deconv=use_deconv, topo=decoder_topo)
-        self.cls = self.conv = nn.Conv2d(
-            in_channels=topo[0], # *3 only for SiamUnet_conc
-            out_channels=num_classes,
-            kernel_size=3,
-            stride=1,
-            padding=1)
-
-        # self.pretrained = pretrained
-        # self.init_weight()
-
-    def forward(self, x, train=True):
-        # x = torch.cat((x1, x2), dim=1)
-        # x = torch.cat(x, dim=1)
-        x1, x2 = x
-
-        logit_list = []
-
-        if not self.share_encoder: encoder_2 = self.encode_2
-        else: encoder_2 = self.encode
-
-        _, short_cuts1 = self.encode(x1)
-        x, short_cuts2 = encoder_2(x2)
-        # print(x.shape)
-
-        # xc = torch.cat((xc, short_cuts1[-1], short_cuts2[-1]), dim=1)
-        short_cut = []
-        for cut1, cut2 in zip(short_cuts1, short_cuts2):
-            # stacked_feat = torch.cat((cut1, cut2), dim=1)
-            diff_feat = torch.subtract(cut1, cut2)
-            short_cut.append(diff_feat)
-
-        # print("--------------------")
-        x = self.decode(x, short_cut)
-        # print(x.shape)
-        x = self.cls(x) # output
-        logit_list.append(x)
-
-        return logit_list
 
 
 class Encoder(nn.Module):
-    def __init__(self, input_channels=6, topo=[16, 32, 64, 128]):
+    def __init__(self, input_channels=3, topo=[16, 32, 64, 128]):
         super().__init__()
 
         self.double_conv = nn.Sequential(
-            ConvBNReLU(input_channels, topo[0], 3), ConvBNReLU(topo[0], topo[0], 3))
+            ConvBNReLU(input_channels, topo[0], 3), 
+            ConvBNReLU(topo[0], topo[0], 3)
+        )
 
         down_channels = []
         for i in range(0, len(topo)):
@@ -220,26 +129,26 @@ class Encoder(nn.Module):
         # print("---- Encoder ----")
         x = self.double_conv(x)
         for down_sample in self.downLayerList:
-            # print(x.shape)
             short_cuts.append(x)
             x = down_sample(x)
+            # print(x.shape)
         return x, short_cuts
 
 
 class Decoder(nn.Module):
-    def __init__(self, align_corners, use_deconv=False, topo=[16,32,64,128], multiplyer=2):
+    def __init__(self, align_corners, use_deconv=False, topo=[16, 32, 64, 128]):
         super().__init__()
 
-        decoder_topo = topo
         # up_channels = [[512, 256], [256, 128], [128, 64], [64, 64]]
+        # [512, 256, 128, 64512]
         up_channels = []
-        for i in range(0, len(decoder_topo)):
-            if i < len(decoder_topo) - 1: up_channels.append([decoder_topo[i], decoder_topo[i+1]])
-            else: up_channels.append([decoder_topo[i], decoder_topo[i]])
+        for i in range(0, len(topo)):
+            if i < len(topo)-1: up_channels.append([topo[i], topo[i+1]])
+            else: up_channels.append([topo[i], topo[i]])
         # print(up_channels)
 
         self.upLayerList = [
-            UpSampling(channel[0], channel[1], align_corners, use_deconv, multiplyer)
+            UpSampling(channel[0], channel[1], align_corners, use_deconv)
             for channel in up_channels
         ]
 
@@ -248,20 +157,18 @@ class Decoder(nn.Module):
     def forward(self, x, short_cuts):
         # print("---- UNet Dncoder ----")
         for i in range(len(short_cuts)):
-            # print(x.shape)
+            # print(x.shape, short_cuts[-(i+1)].shape)
             x = self.up_stages[i](x, short_cuts[-(i + 1)])
             # print(x.shape)
 
         return x
-
 
 class UpSampling(nn.Module):
     def __init__(self,
                  in_channels,
                  out_channels,
                  align_corners,
-                 use_deconv=False,
-                 multiplyer=2):
+                 use_deconv=False):
         super().__init__()
 
         self.align_corners = align_corners
@@ -276,13 +183,15 @@ class UpSampling(nn.Module):
                 padding=0)
             in_channels = in_channels + out_channels // 2
         else:
-            in_channels *= multiplyer # 2 -> 3 for FC-Siam-conc
+            in_channels *= 2
 
         self.double_conv = nn.Sequential(
             ConvBNReLU(in_channels, out_channels, 3),
             ConvBNReLU(out_channels, out_channels, 3))
 
     def forward(self, x, short_cut):
+        # print("before inter: ", x.shape, short_cut.shape)
+
         if self.use_deconv:
             x = self.deconv(x)
         else:
@@ -291,14 +200,15 @@ class UpSampling(nn.Module):
                 (short_cut.shape)[2:],
                 mode='bilinear',
                 align_corners=self.align_corners)
+
+        # print(x.shape, short_cut.shape)
         x = torch.cat([x, short_cut], dim=1)
-        # print(x.shape)
         x = self.double_conv(x)
+        # print(x.shape)
         return x
 
 
 # https://sourcegraph.com/github.com/PaddlePaddle/PaddleSeg/-/blob/paddleseg/models/layers/layer_libs.py?L98
-
 class ConvBNReLU(nn.Module):
     def __init__(self,
                  in_channels,
@@ -328,17 +238,14 @@ if __name__ == "__main__":
     import numpy as np
     from torchsummary import summary
 
-    x1 = np.random.rand(10,6,256,256)
-    x2 = np.random.rand(10,6,256,256)
+    x1 = np.random.rand(100,3,256,256)
+    # x2 = np.random.rand(10,3,256,256)
     x1 = torch.from_numpy(x1).type(torch.FloatTensor)#.cuda().type(torch.cuda.FloatTensor)
-    x2 = torch.from_numpy(x2).type(torch.FloatTensor)#.cuda().type(torch.cuda.FloatTensor)
+    # x2 = torch.from_numpy(x2).type(torch.FloatTensor)#.cuda().type(torch.cuda.FloatTensor)
 
-    myunet = SiamUnet_conc(input_channels=6, share_encoder=True)
-    myunet1 = SiamUnet_diff(input_channels=6, share_encoder=True)
+    myunet = UNet(input_channels=x1.shape[1])
     # myunet.cuda()
 
     # print(myunet)
-
-    out = myunet.forward((x1, x2))[-1]
-    print(out.shape)
+    print(myunet.forward([x1]).shape)
     # summary(myunet, (3,256,256))

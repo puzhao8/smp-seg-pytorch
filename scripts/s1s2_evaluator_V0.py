@@ -67,7 +67,6 @@ def inference(model, test_dir, test_id, cfg):
     if torch.cuda.is_available():
         model.to("cuda")
 
-    ''' read input data '''
     input_tensors = []
     for sat in cfg.data.satellites:
         
@@ -101,7 +100,6 @@ def inference(model, test_dir, test_id, cfg):
     pred_mask_pad = np.zeros((Height, Width))
     prob_mask_pad = np.zeros((NUM_CLASS, Height, Width))
 
-    ''' tile-wise inference '''
     input_patchsize = 2 * patchsize
     padSize = int(patchsize/2) 
     for i in tqdm(range(0, Height - input_patchsize + 1, patchsize)):
@@ -124,16 +122,13 @@ def inference(model, test_dir, test_id, cfg):
                     input_patchs.append(post_patch)
 
             ''' ------------> apply model <--------------- '''
-            # if 'UNet' == cfg.model.ARCH:
-            #     # if len(cfg.data.satellites) == 1: input = input_patchs[0] # single sensor
-            #     # else: input = torch.cat(input_patchs) # stack multi-sensor data
-            #     out = model.forward(input_patchs)
+            if 'UNet' == cfg.model.ARCH:
+                if len(cfg.data.satellites) == 1: input = input_patchs[0] # single sensor
+                else: input = torch.cat(input_patchs) # stack multi-sensor data
+                out = model.forward(input) # Old model: input should NOT be a list.
 
-            if 'distill_unet' == cfg.model.ARCH:
-                if cfg.model.DISTILL:
-                    out = model.forward(input_patchs[:1])[-1] # ONLY USE S1 sensor in distill mode.
-                else:
-                    out = model.forward(input_patchs)[-1] # USE all data in pretrain mode.
+            elif 'distill_unet' == cfg.model.ARCH:
+                _, out = model.forward(input_patchs[0]) # only input S1
 
             elif 'SiamResUNet' in cfg.model.ARCH:
                 out, decoder_out = model.forward(input_patchs, False)
@@ -141,11 +136,12 @@ def inference(model, test_dir, test_id, cfg):
             elif 'cdc_unet' in cfg.model.ARCH:
                 out, decoder_out = model.forward(input_patchs, False)
             
-            else: # UNet, SiamUnet
-                # NEW: input_patchs should be a list or tuple, the last one is the wanted output.
-                out = model.forward(input_patchs)[-1] 
-
+            else: # SiamUnet
+                out = model.forward(input_patchs)
             ''' ------------------------------------------ '''
+
+            # predPatch = decoder_out[1].squeeze().cpu().detach().numpy()#.round()
+            # predLabel = 1 - np.argmax(predPatch, axis=0).squeeze()
             activation = Activation(name=cfg.model.ACTIVATION)
             predPatch = activation(out)
 
@@ -280,7 +276,7 @@ def run_app(cfg : DictConfig) -> None:
     # for test_id in test_id_list:
     #     apply_model_on_event(model, test_id, output_dir, satellites=['S1', 'S2'])
 
-    run_dir = Path("/home/p/u/puzhao/smp-seg-pytorch/outputs/run_s1s2_distill_unet_S1_distill_20220108T165457")
+    run_dir = Path("/home/p/u/puzhao/smp-seg-pytorch/outputs/run_s1s2_SiamUnet_conc_['S2']_None_20220108T004641")
     model_url = run_dir / "model.pth"
     output_dir = run_dir / "errMap"
     evaluate_model(cfg, model_url, output_dir)

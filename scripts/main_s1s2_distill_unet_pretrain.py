@@ -32,17 +32,17 @@ import logging
 logger = logging.getLogger(__name__)
 
 import smp
-from smp.base.modules import Activation
 from models.model_selection import get_model
 import wandb
 
 f_score = smp.utils.functional.f_score
+
 # Dice/F1 score - https://en.wikipedia.org/wiki/S%C3%B8rensen%E2%80%93Dice_coefficient
 # IoU/Jaccard score - https://en.wikipedia.org/wiki/Jaccard_index
 diceLoss = smp.utils.losses.DiceLoss(eps=1)
-from models.loss_ref import soft_dice_loss, soft_dice_loss_balanced, jaccard_like_loss, jaccard_like_balanced_loss
-
 AverageValueMeter =  smp.utils.train.AverageValueMeter
+
+from smp.base.modules import Activation
 
 # Augmentations
 from dataset.augument import get_training_augmentation, \
@@ -74,43 +74,20 @@ class SegModel(object):
         self.rundir = self.project_dir / self.cfg.experiment.output
         self.model_url = str( self.rundir / "model.pth")
 
-        if cfg.model.ENCODER is not None:
-            self.preprocessing_fn = \
-                smp.encoders.get_preprocessing_fn(cfg.model.ENCODER, cfg.model.ENCODER_WEIGHTS)
+        self.preprocessing_fn = \
+            smp.encoders.get_preprocessing_fn(cfg.model.ENCODER, cfg.model.ENCODER_WEIGHTS)
 
         self.metrics = [smp.utils.metrics.IoU(threshold=0.5),
                         smp.utils.metrics.Fscore()
                     ]
 
-        '''--------------> need to improve <-----------------'''
+        ''' -------------> need to improve <-----------------'''
         # specify data folder
         self.train_dir = Path(self.cfg.data.dir) / 'train'
         self.valid_dir = Path(self.cfg.data.dir) / 'test'
         '''--------------------------------------------------'''
 
-    def loss_fun(self):
-        cfg = self.cfg
-        if cfg.model.LOSS_TYPE == 'BCEWithLogitsLoss':
-            criterion = nn.BCEWithLogitsLoss()
-        elif cfg.model.LOSS_TYPE == 'CrossEntropyLoss':
-            balance_weight = [cfg.MODEL.NEGATIVE_WEIGHT, cfg.MODEL.POSITIVE_WEIGHT]
-            balance_weight = torch.tensor(balance_weight).float().to(self.DEVICE)
-            criterion = nn.CrossEntropyLoss(weight = balance_weight)
-        elif cfg.model.LOSS_TYPE == 'SoftDiceLoss':
-            criterion = soft_dice_loss 
-        elif cfg.model.LOSS_TYPE == 'SoftDiceBalancedLoss':
-            criterion = soft_dice_loss_balanced
-        elif cfg.model.LOSS_TYPE == 'JaccardLikeLoss':
-            criterion = jaccard_like_loss
-        elif cfg.model.LOSS_TYPE == 'ComboLoss':
-            criterion = lambda pred, gts: F.binary_cross_entropy_with_logits(pred, gts) + soft_dice_loss(pred, gts)
-        elif cfg.model.LOSS_TYPE == 'WeightedComboLoss':
-            criterion = lambda pred, gts: F.binary_cross_entropy_with_logits(pred, gts) + 10 * soft_dice_loss(pred, gts)
-        elif cfg.model.LOSS_TYPE == 'FrankensteinLoss':
-            criterion = lambda pred, gts: F.binary_cross_entropy_with_logits(pred, gts) + jaccard_like_balanced_loss(pred, gts)
 
-        return criterion
-    
     def get_dataloaders(self) -> dict:
 
         """ Data Preparation """
@@ -182,7 +159,7 @@ class SegModel(object):
             if valid_logs['iou_score'] > max_score:
                 max_score = valid_logs['iou_score']
 
-                if (1 == epoch) or (0 == (epoch % self.cfg.model.save_interval)):
+                if (1 == epoch) or (0 == epoch % self.cfg.model.save_interval):
                     torch.save(self.model, self.model_url)
                     # torch.save(self.model.state_dict(), self.model_url)
                     print('Model saved!')
@@ -213,6 +190,7 @@ class SegModel(object):
             if phase == 'valid': self.valid_logs = logs
 
 
+
     def step(self, phase) -> dict:
         logs = {}
         loss_meter = AverageValueMeter()
@@ -222,37 +200,25 @@ class SegModel(object):
         #     dataLoader_woCAug = iter(self.dataloaders['Train_woCAug'])
 
         with tqdm(iter(self.dataloaders[phase]), desc=phase, file=sys.stdout, disable=not self.cfg.model.verbose) as iterator:
-            for (x, y) in iterator:
+            for (x1, x2, y) in iterator:
+
+                # if ('Train' in phase) and (self.cfg.useDataWoCAug):
+                #     x0, y0 = next(dataLoader_woCAug)  
+                #     x = torch.cat((x0, x), dim=0)
+                #     y = torch.cat((y0, y), dim=0)
+
+                x1, x2, y = x1.to(self.DEVICE), x2.to(self.DEVICE), y.to(self.DEVICE)
                 self.optimizer.zero_grad()
 
-                ''' move data to GPU '''
-                input = []
-                for x_i in x: input.append(x_i.to(self.DEVICE))
-                y = y.to(self.DEVICE)
-                # print(len(input))
-
-                ''' do prediction '''
-                out = self.model.forward(input)[-1]
+                _, out = self.model.forward((x1, x2))
                 y_pred = self.activation(out)
 
-
                 ''' compute loss '''
-                # y = torch.argmax(y, dim=1)
-                # dice_loss_ =  diceLoss(y_pred, y)
+                dice_loss_ =  diceLoss(y_pred, y)
                 # focal_loss_ = self.cfg.alpha * focal_loss(y_pred, y)
                 # tv_loss_ = 1e-5 * self.cfg.beta * torch.mean(tv_loss(y_pred))
 
-                # print(y_pred.shape, y.shape)
-                # criterion = self.loss_fun()
-                
-                loss_ = diceLoss(y_pred, y)
-
-                if phase == 'train':
-                    loss_.backward()
-                    self.optimizer.step()
-
-                    if self.cfg.model.use_lr_scheduler:
-                        self.lr_scheduler.step()
+                loss_ = dice_loss_
 
                 # update loss logs
                 loss_value = loss_.cpu().detach().numpy()
@@ -274,15 +240,16 @@ class SegModel(object):
                     s = format_logs(logs)
                     iterator.set_postfix_str(s)
 
-                # if phase == 'train':
-                #     loss_.backward()
-                #     self.optimizer.step()
+                if phase == 'train':
+                    loss_.backward()
+                    self.optimizer.step()
 
-                #     if self.cfg.model.use_lr_scheduler:
-                #         self.lr_scheduler.step()
+                    if self.cfg.model.use_lr_scheduler:
+                        self.lr_scheduler.step()
 
             return logs
 ##############################################################
+
 
 
 def set_random_seed(seed, deterministic=False):
@@ -304,7 +271,7 @@ def set_random_seed(seed, deterministic=False):
         torch.backends.cudnn.benchmark = False
 
 
-@hydra.main(config_path="./config", config_name="unet")
+@hydra.main(config_path="./config", config_name="distill_unet_pretrain")
 def run_app(cfg : DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
 

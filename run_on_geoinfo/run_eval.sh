@@ -35,9 +35,13 @@ nvidia-smi
 
 # singularity exec --nv /cephyr/users/puzhao/Alvis/PyTorch_v1.7.0-py3.sif python main_s1s2_unet.py s1s2_unet=$CFG
 conda activate pytorch
-PYTHONUNBUFFERED=1; python3 s1s2_evaluator.py \
-    data.dir=/home/p/u/puzhao/wildfire-s1s2-dataset-ca-tiles \
-    data.satellites=['S2']
+PYTHONUNBUFFERED=1; 
+
+# sbatch run_on_geoinfo/run_eval.sh
+python3 s1s2_evaluator.py \
+    --config-name=distill_unet.yaml \
+    model.ARCH=distill_unet \
+    experiment.note=eval
 
 #rm -rf $SLURM_SUBMIT_DIR/*.log
 # rm -rf $SLURM_SUBMIT_DIR/*.out

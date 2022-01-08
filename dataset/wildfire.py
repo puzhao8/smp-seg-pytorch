@@ -181,19 +181,20 @@ class S1S2(BaseDataset):
             mask = np.stack(masks, axis=0).astype('float32')
             image_list.append(mask)
 
-        # apply augmentations
-        if self.augmentation:
-            # sample = self.augmentation(image=image, mask=mask)
-            # image, mask = sample['image'], sample['mask']
-            image_list = [self.augmentation(image=image.transpose(1,2,0))['image'].transpose(2,0,1) for image in image_list]
+        # # apply augmentations
+        # if self.augmentation:
+        #     # sample = self.augmentation(image=image, mask=mask)
+        #     # image, mask = sample['image'], sample['mask']
+        #     image_list = [self.augmentation(image=image.transpose(1,2,0))['image'].transpose(2,0,1) for image in image_list]
         
-        # apply preprocessing
-        if self.preprocessing:
-            # sample = self.preprocessing(image=mask, mask=mask)
-            # image, mask = sample['image'], sample['mask']
-            image_list = [self.preprocessing(image=image.transpose(1,2,0))['image'].transpose(2,0,1) for image in image_list]
+        # # apply preprocessing
+        # if self.preprocessing:
+        #     # sample = self.preprocessing(image=mask, mask=mask)
+        #     # image, mask = sample['image'], sample['mask']
+        #     image_list = [self.preprocessing(image=image.transpose(1,2,0))['image'].transpose(2,0,1) for image in image_list]
 
-        return tuple(image_list)
+        # return tuple(image_list)
+        return (tuple(image_list[:-1]), image_list[-1])
         
     def __len__(self):
         return len(self.ids)

@@ -1,5 +1,5 @@
 project:
-    name: s1s2-snic-fresh
+    name: IGARSS-2022
     entity: wildfire
 
 data:
@@ -8,7 +8,7 @@ data:
     prepost: ['pre', 'post']
     stacking: True
     # dir: /cephyr/NOBACKUP/groups/snic2021-7-104/wildfire-s1s2-dataset-ca-tiles
-    dir: /home/p/u/puzhao/wildfire-s1s2-dataset-ca-tiles-V0
+    dir: /home/p/u/puzhao/wildfire-s1s2-dataset-ca-tiles
     # dir: D:\wildfire-s1s2-dataset-ak-tiles
 
     ALL_BANDS:
@@ -19,7 +19,8 @@ data:
     INPUT_BANDS:
         S1: ['ND', 'VH', 'VV']
         ALOS: ['ND', 'VH', 'VV']
-        S2: ['B8', 'B11', 'B12']
+        S2: ['B4', 'B8', 'B12']
+        # S2: ['B2', 'B3', 'B4', 'B8', 'B11', 'B12'] #['B4', 'B8', 'B12']
 
     useDataWoCAug: False
     SEED: 42
@@ -28,19 +29,20 @@ data:
     # CLASSES: ['unburn', 'burned']
     CLASSES: ['burned']
     REF_MASK: poly
+    train_ratio: 0.9
 
-    USE_PRE_IMG: True
 
 model:
     ARCH: SiamUnet_conc #Paddle_unet #FuseUNet #FuseUNet, UNet
-    # TOPO: [16, 32, 64, 128]
-    TOPO: [32, 64, 128, 256]
+    TOPO: [16, 32, 64, 128]
+    SHARE_ENCODER: False
+
+    # TOPO: [32, 64, 128, 256]
     ACTIVATION: sigmoid
     ENCODER: resnet18 # 'mobilenet_v2'
     ENCODER_WEIGHTS: imagenet
 
-    train_ratio: 0.8
-    max_epoch: 20
+    max_epoch: 100
     batch_size: 16
     learning_rate: 1e-4
     weight_decay: 1e-4
@@ -57,7 +59,7 @@ eval:
     patchsize: 512
 
 experiment:
-    note: V0
+    note: 
     name: ${data.name}_${model.ARCH}_${data.satellites}_${experiment.note}
     output: ./outputs/run_${experiment.name}_${now:%Y%m%dT%H%M%S} #${defaults.0.data}
 
