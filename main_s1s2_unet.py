@@ -235,16 +235,7 @@ class SegModel(object):
                 out = self.model.forward(input)[-1]
                 y_pred = self.activation(out)
 
-
                 ''' compute loss '''
-                # y = torch.argmax(y, dim=1)
-                # dice_loss_ =  diceLoss(y_pred, y)
-                # focal_loss_ = self.cfg.alpha * focal_loss(y_pred, y)
-                # tv_loss_ = 1e-5 * self.cfg.beta * torch.mean(tv_loss(y_pred))
-
-                # print(y_pred.shape, y.shape)
-                # criterion = self.loss_fun()
-                
                 loss_ = diceLoss(y_pred, y)
 
                 if phase == 'train':
@@ -306,11 +297,18 @@ def set_random_seed(seed, deterministic=False):
 
 @hydra.main(config_path="./config", config_name="unet")
 def run_app(cfg : DictConfig) -> None:
-    print(OmegaConf.to_yaml(cfg))
-
     # wandb.init(config=cfg, project=cfg.project.name, name=cfg.experiment.name)
-    wandb.init(config=cfg, project=cfg.project.name, entity=cfg.project.entity, name=cfg.experiment.name)
-    # project_dir = Path(hydra.utils.get_original_cwd())
+    import pandas as pd
+    from prettyprinter import pprint
+    from easydict import EasyDict as edict
+    
+    cfg_dict = OmegaConf.to_container(cfg, resolve=True)
+    cfg_flat = pd.json_normalize(cfg_dict, sep='.').to_dict(orient='records')[0]
+
+    USE_WANDB = False
+    if not USE_WANDB:
+        wandb.init(config=cfg_flat, project=cfg.project.name, entity=cfg.project.entity, name=cfg.experiment.name)
+    pprint(cfg_flat)
     
     # set randome seed
     set_random_seed(cfg.data.SEED)
@@ -323,7 +321,8 @@ def run_app(cfg : DictConfig) -> None:
     from s1s2_evaluator import evaluate_model
     evaluate_model(cfg, mySegModel.model_url, mySegModel.rundir / "errMap")
     
-    wandb.finish()
+    if not USE_WANDB:
+        wandb.finish()
 
 
 if __name__ == "__main__":

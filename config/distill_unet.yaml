@@ -26,7 +26,7 @@ data:
         S1: ['ND', 'VH', 'VV']
         ALOS: ['ND', 'VH', 'VV']
         # S2: ['B2', 'B3', 'B4', 'B8', 'B11', 'B12'] #['B4', 'B8', 'B12']
-        S2: ['B3', 'B8', 'B12'] #['B4', 'B8', 'B12']
+        S2: ['B4', 'B8', 'B12'] #['B4', 'B8', 'B12']
 
     useDataWoCAug: False
     SEED: 42
@@ -44,9 +44,10 @@ model:
 
     S2_PRETRAIN: /home/p/u/puzhao/smp-seg-pytorch/outputs/run_s1s2_distill_unet_S2_pretrain_B4812_20220108T164608/model.pth
     DISTILL: True
-    LOSS_COEF: [1,0] # dice_loss + a * loss_do + b * loss_df
-
+    LOSS_COEF: [0,0,0] # a * dice_loss + b * loss_do + c * loss_df
     ACTIVATION: sigmoid
+
+    # For ResUNet only
     ENCODER: resnet18 # 'mobilenet_v2'
     ENCODER_WEIGHTS: imagenet
 
@@ -68,7 +69,7 @@ eval:
 
 experiment:
     note: 
-    name: ${data.name}_${model.ARCH}_${experiment.note}
+    name: ${data.name}_${model.ARCH}_${data.satellites}_${experiment.note}
     output: ./outputs/run_${experiment.name}_${now:%Y%m%dT%H%M%S} #${defaults.0.data}
 
 hydra:

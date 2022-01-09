@@ -30,7 +30,7 @@ def get_model(cfg):
 
     if cfg.model.ARCH == 'distill_unet':
         INPUT_CHANNELS = INPUT_CHANNELS_LIST[0] # defined by the first sensor
-        model = distill_unet(INPUT_CHANNELS, OUT_CHANNELS, 
+        model = UNet(INPUT_CHANNELS, OUT_CHANNELS, 
                             topo=cfg.model.TOPO, 
                         ) #'FC-Siam-diff'
     

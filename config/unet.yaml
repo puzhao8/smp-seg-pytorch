@@ -13,7 +13,7 @@ data:
     dir: /home/p/u/puzhao/wildfire-s1s2-dataset-ca-tiles
 
     name: s1s2
-    satellites: ['S1']
+    satellites: ['S1','S2']
     prepost: ['pre', 'post']
     stacking: True # stack bi-temporal data
 

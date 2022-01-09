@@ -41,6 +41,7 @@ f_score = smp.utils.functional.f_score
 # IoU/Jaccard score - https://en.wikipedia.org/wiki/Jaccard_index
 diceLoss = smp.utils.losses.DiceLoss(eps=1)
 mse_loss = nn.MSELoss(reduction='mean')
+# F.binary_cross_entropy
 
 AverageValueMeter =  smp.utils.train.AverageValueMeter
 
@@ -80,6 +81,7 @@ class SegModel(object):
         if self.cfg.model.DISTILL:
             self.S2_model = torch.load(self.cfg.model.S2_PRETRAIN, map_location=torch.device('cpu'))
             self.S2_model.to(self.DEVICE)
+            self.S2_model.eval()
 
         self.preprocessing_fn = \
             smp.encoders.get_preprocessing_fn(cfg.model.ENCODER, cfg.model.ENCODER_WEIGHTS)
@@ -96,7 +98,6 @@ class SegModel(object):
 
 
     def get_dataloaders(self) -> dict:
-
         """ Data Preparation """
         train_dataset = Dataset(
             self.train_dir, 
@@ -229,21 +230,20 @@ class SegModel(object):
 
                 ''' compute loss '''
                 dice_loss_value =  diceLoss(y_pred, y)
+                loss_ = dice_loss_value
 
                 if self.cfg.model.DISTILL:
-                    xc2, out2 = self.S2_model.forward(input[1:])
+                    xc2, out2 = self.S2_model.forward(input[-1:])
                     loss_distill_outout = mse_loss(self.activation(out), self.activation(out2))
                     loss_distill_feat = mse_loss(self.activation(xc), self.activation(xc2))
+
+                    loss_ = self.cfg.model.LOSS_COEF[0] * dice_loss_value \
+                        + self.cfg.model.LOSS_COEF[1] * loss_distill_outout \
+                        + self.cfg.model.LOSS_COEF[2] * loss_distill_feat
 
                     metrics_meters['loss_do'].add(loss_distill_outout.cpu().detach().numpy())
                     metrics_meters['loss_df'].add(loss_distill_feat.cpu().detach().numpy())
                     metrics_meters['dice_loss'].add(dice_loss_value.cpu().detach().numpy())
-
-                    loss_ = dice_loss_value + self.cfg.model.LOSS_COEF[0] * loss_distill_outout \
-                        + self.cfg.model.LOSS_COEF[1] * loss_distill_feat
-                    # loss_ = dice_loss_value
-                else:
-                    loss_ = dice_loss_value
                 
 
                 # update loss logs
@@ -300,11 +300,19 @@ def set_random_seed(seed, deterministic=False):
 
 @hydra.main(config_path="./config", config_name="distill_unet")
 def run_app(cfg : DictConfig) -> None:
-    print(OmegaConf.to_yaml(cfg))
-
     # wandb.init(config=cfg, project=cfg.project.name, name=cfg.experiment.name)
-    wandb.init(config=cfg, project=cfg.project.name, entity=cfg.project.entity, name=cfg.experiment.name)
-    # project_dir = Path(hydra.utils.get_original_cwd())
+    import pandas as pd
+    from prettyprinter import pprint
+    from easydict import EasyDict as edict
+    
+    cfg_dict = OmegaConf.to_container(cfg, resolve=True)
+    cfg_flat = pd.json_normalize(cfg_dict, sep='.').to_dict(orient='records')[0]
+
+    wandb.init(config=cfg_flat, project=cfg.project.name, entity=cfg.project.entity, name=cfg.experiment.name)
+    
+    pprint(cfg_flat)
+    # print(OmegaConf.to_yaml(cfg))
+    project_dir = Path(hydra.utils.get_original_cwd())
     
     # set randome seed
     set_random_seed(cfg.data.SEED)

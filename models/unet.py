@@ -79,7 +79,7 @@ class UNet(nn.Module):
 
         logit_list = []
         xc, short_cuts = self.encode(x)
-        # logit_list.append(xc) # most center features
+        logit_list.append(xc) # most center features
 
         # for shortcut in short_cuts:
         #     print(shortcut.shape)
@@ -236,12 +236,12 @@ if __name__ == "__main__":
     import numpy as np
     from torchsummary import summary
 
-    x1 = np.random.rand(10,6,256,256)
+    x1 = np.random.rand(10,12,256,256)
     # x2 = np.random.rand(10,3,256,256)
     x1 = torch.from_numpy(x1).type(torch.FloatTensor)#.cuda().type(torch.cuda.FloatTensor)
     # x2 = torch.from_numpy(x2).type(torch.FloatTensor)#.cuda().type(torch.cuda.FloatTensor)
 
-    myunet = UNet(input_channels=6)
+    myunet = UNet(input_channels=x1.shape[1])
     # myunet.cuda()
 
     # print(myunet)

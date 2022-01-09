@@ -127,7 +127,8 @@ class S1S2(BaseDataset):
             post_dir = data_dir / sat / "post"
             
             # fps
-            ids = os.listdir(post_dir)
+            # ids = os.listdir(post_dir) # Old
+            ids = sorted(os.listdir(post_dir)) # modified on Jan-09
             pre_fps = [os.path.join(pre_dir, image_id) for image_id in ids]
             post_fps = [os.path.join(post_dir, image_id) for image_id in ids]
             return pre_fps, post_fps, ids
@@ -135,8 +136,9 @@ class S1S2(BaseDataset):
         self.fps_dict = {}
         for sat in cfg.data.satellites:
             self.fps_dict[sat] = get_fps(sat)
-        self.ids = self.fps_dict[sat][-1]
-        
+        # self.ids = self.fps_dict[sat][-1]
+        self.ids = self.fps_dict[cfg.data.satellites[0]][-1]
+
         self.masks_fps = [os.path.join(masks_dir, image_id) for image_id in self.ids]
         
         # convert str names to class values on masks
@@ -150,28 +152,28 @@ class S1S2(BaseDataset):
         
         ''' read data '''
         image_list = []
-        for sat in self.fps_dict.keys():
-
+        # for sat in sorted(self.fps_dict.keys()):
+        for sat in self.cfg.data.satellites: # modified on Jan-9
             post_fps = self.fps_dict[sat][1]
             image_post = tiff.imread(post_fps[i]) # C*H*W
             image_post = np.nan_to_num(image_post, 0)
-            if sat in ['S1', 'ALOS']: image_post = (np.clip(image_post, -30, 0) + 30) / 30
+            if sat in ['S1','ALOS']: image_post = self.normalize_sar(image_post)
             image_post = image_post[self.band_index_dict[sat],] # select bands
 
             if 'pre' in self.cfg.data.prepost:
                 pre_fps = self.fps_dict[sat][0]
                 image_pre = tiff.imread(pre_fps[i])
                 image_pre = np.nan_to_num(image_pre, 0)
-                if sat in ['S1', 'ALOS']: image_pre = (np.clip(image_pre, -30, 0) + 30) / 30
+                if sat in ['S1','ALOS']: image_pre = self.normalize_sar(image_pre)
                 image_pre = image_pre[self.band_index_dict[sat],] # select bands
                 
                 if self.cfg.data.stacking: # if stacking bi-temporal data
                     stacked = np.concatenate((image_pre, image_post), axis=0) 
-                    image_list.append(stacked)
+                    image_list.append(stacked) #[x1, x2]
                 else:
-                    image_list += [image_pre, image_post]
+                    image_list += [image_pre, image_post] #[t1, t2]
             else:
-                image_list.append(image_post)
+                image_list.append(image_post) #[x1_t2, x2_t2]
 
         ''' read mask '''
         mask = tiff.imread(self.masks_fps[i])
@@ -217,3 +219,6 @@ class S1S2(BaseDataset):
             band_index_dict[sat] = get_band_index(sat)
         
         return band_index_dict
+
+    def normalize_sar(self, img):
+        return (np.clip(img, -30, 0) + 30) / 30

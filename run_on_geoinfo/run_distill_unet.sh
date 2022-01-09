@@ -34,10 +34,22 @@ echo "--------------------------------------------------------------------------
 conda activate pytorch
 PYTHONUNBUFFERED=1; 
 
+
+# sbatch run_on_geoinfo/run_distill_unet.sh
+# python3 main_s1s2_unet.py \
+#             --config-name=distill_unet.yaml \
+#             data.satellites=['S1'] \
+#             model.LOSS_COEF=[0,0] \
+#             model.ARCH=distill_unet \
+#             model.DISTILL=True \
+#             model.batch_size=16 \
+#             model.max_epoch=100 \
+#             experiment.note=S1_pretrain
+
 # echo "-------------------- distill-unet: PRETRAIN ------------------------"
 # python3 main_s1s2_distill_unet.py \
 #             --config-name=distill_unet.yaml \
-#             data.satellites=['S2'] \
+#             data.satellites=['S1','S2'] \
 #             data.INPUT_BANDS.S2=['B4','B8','B12']\
 #             model.LOSS_COEF=[0,0] \
 #             model.ARCH=distill_unet \
@@ -46,18 +58,18 @@ PYTHONUNBUFFERED=1;
 #             model.max_epoch=100 \
 #             experiment.note=S2_pretrain_B4812
 
-# sbatch run_on_geoinfo/run_distill_unet.sh
-echo "-------------------- distill-unet: DISTILL ------------------------"
+# # sbatch run_on_geoinfo/run_distill_unet.sh
+# echo "-------------------- distill-unet: DISTILL ------------------------"
 python3 main_s1s2_distill_unet.py \
             --config-name=distill_unet.yaml \
             data.satellites=['S1','S2'] \
             model.ARCH=distill_unet \
             model.DISTILL=True \
             model.S2_PRETRAIN=/home/p/u/puzhao/smp-seg-pytorch/outputs/run_s1s2_distill_unet_S2_pretrain_B4812_20220108T164608/model.pth \
-            model.LOSS_COEF=[0.1,0] \
+            model.LOSS_COEF=[1,0.1,0] \
             model.batch_size=16 \
-            model.max_epoch=20 \
-            experiment.note=S1_distill
+            model.max_epoch=100 \
+            experiment.note=S1_distill_1_0.1_0
 
 #rm -rf $SLURM_SUBMIT_DIR/*.log
 # rm -rf $SLURM_SUBMIT_DIR/*.out
