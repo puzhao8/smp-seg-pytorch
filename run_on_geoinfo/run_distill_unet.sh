@@ -5,7 +5,7 @@
 #SBATCH --cpus-per-task 8
 #SBATCH -t 7-00:00:00
 #SBATCH --job-name distill-unet
-#SBATCH --output /home/p/u/puzhao/smp-seg-pytorch/run_logs/%x-%A_%a.out
+#SBATCH --output /home/p/u/puzhao/run_logs/%x-%A_%a.out
 
 echo "start"
 echo "Starting job ${SLURM_JOB_ID} on ${SLURMD_NODENAME}"
@@ -62,14 +62,24 @@ PYTHONUNBUFFERED=1;
 # echo "-------------------- distill-unet: DISTILL ------------------------"
 python3 main_s1s2_distill_unet.py \
             --config-name=distill_unet.yaml \
-            data.satellites=['S1','S2'] \
-            model.ARCH=distill_unet \
-            model.DISTILL=True \
-            model.S2_PRETRAIN=/home/p/u/puzhao/smp-seg-pytorch/outputs/run_s1s2_distill_unet_S2_pretrain_B4812_20220108T164608/model.pth \
-            model.LOSS_COEF=[1,0.1,0] \
-            model.batch_size=16 \
-            model.max_epoch=100 \
-            experiment.note=S1_distill_1_0.1_0
+            RAND.SEED=0 \
+            RAND.DETERMIN=False \
+            DATA.SATELLITES=['S1','S2'] \
+            DATA.STACKING=True \
+            DATA.INPUT_BANDS.S1=['ND','VH','VV'] \
+            DATA.INPUT_BANDS.S2=['B4','B8','B12'] \
+            MODEL.ARCH=distill_unet \
+            MODEL.L2_NORM=False \
+            MODEL.USE_DECONV=True \
+            MODEL.WEIGHT_DECAY=0.01 \
+            MODEL.NUM_CLASSES=1 \
+            MODEL.LOSS_TYPE=DiceLoss \
+            MODEL.LOSS_COEF=[1,0,0] \
+            MODEL.LR_SCHEDULER=cosine \
+            MODEL.ACTIVATION=sigmoid \
+            MODEL.BATCH_SIZE=16 \
+            MODEL.MAX_EPOCH=100 \
+            EXP.NOTE=1_0_0_Jan15
 
 #rm -rf $SLURM_SUBMIT_DIR/*.log
 # rm -rf $SLURM_SUBMIT_DIR/*.out

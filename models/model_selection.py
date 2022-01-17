@@ -7,34 +7,43 @@ from models.unet_cdc import UNet as cdc_unet
 from models.siam_unet_resnet import SiamResUnet
 
 from models.unet_distill import UNet as distill_unet
+from models.segformer import segformer_models
 
 def get_model(cfg):
 
     ########################### COMPUTE INPUT & OUTPUT CHANNELS ############################
-    print("satellites: ", cfg.data.satellites)
-    print("CLASSES:", cfg.data.CLASSES)
+    print("Satellites: ", cfg.DATA.SATELLITES)
+    print("NUM_CLASSES:", cfg.MODEL.NUM_CLASSES)
 
-    OUT_CHANNELS = len(cfg.data.CLASSES)
+    # cfg.MODEL.NUM_CLASSES = cfg.MODEL.cfg.MODEL.NUM_CLASSES
 
     INPUT_CHANNELS_DICT = {}
     INPUT_CHANNELS_LIST = []
-    for sat in cfg.data.satellites:
-        INPUT_CHANNELS_DICT[sat] = len(list(cfg.data.INPUT_BANDS[sat]))
-        if cfg.data.stacking: INPUT_CHANNELS_DICT[sat] = len(cfg.data.prepost) * INPUT_CHANNELS_DICT[sat]
+    for sat in cfg.DATA.SATELLITES:
+        INPUT_CHANNELS_DICT[sat] = len(list(cfg.DATA.INPUT_BANDS[sat]))
+        if cfg.DATA.STACKING: INPUT_CHANNELS_DICT[sat] = len(cfg.DATA.PREPOST) * INPUT_CHANNELS_DICT[sat]
         INPUT_CHANNELS_LIST.append(INPUT_CHANNELS_DICT[sat])
     
     ########################### MODEL SELECTION ############################
-    if cfg.model.ARCH == "UNet":
+    if cfg.MODEL.ARCH == "UNet":
         INPUT_CHANNELS = sum(INPUT_CHANNELS_LIST)
-        model = UNet(INPUT_CHANNELS, OUT_CHANNELS, topo=cfg.model.TOPO) #'FC-EF'
+        model = UNet(INPUT_CHANNELS, 
+                        num_classes=cfg.MODEL.NUM_CLASSES, 
+                        topo=cfg.MODEL.TOPO,
+                        use_deconv=cfg.MODEL.USE_DECONV) #'FC-EF'
 
-    if cfg.model.ARCH == 'distill_unet':
+    if cfg.MODEL.ARCH == 'distill_unet':
         INPUT_CHANNELS = INPUT_CHANNELS_LIST[0] # defined by the first sensor
-        model = UNet(INPUT_CHANNELS, OUT_CHANNELS, 
-                            topo=cfg.model.TOPO, 
-                        ) #'FC-Siam-diff'
+        model = UNet(INPUT_CHANNELS, 
+                        num_classes=cfg.MODEL.NUM_CLASSES, 
+                        topo=cfg.MODEL.TOPO, 
+                    ) #'FC-Siam-diff'
+
+    if cfg.MODEL.ARCH in segformer_models.keys():
+        INPUT_CHANNELS = sum(INPUT_CHANNELS_LIST)
+        model = segformer_models[cfg.MODEL.ARCH](in_channels=INPUT_CHANNELS, num_classes=cfg.MODEL.NUM_CLASSES)
     
-    if "SiamUnet" in cfg.model.ARCH:
+    if "SiamUnet" in cfg.MODEL.ARCH:
         if len(INPUT_CHANNELS_LIST) == 1: # single sensor
             INPUT_CHANNELS = INPUT_CHANNELS_LIST[0]
         elif len(INPUT_CHANNELS_LIST) == 2: # two sensors
@@ -44,68 +53,74 @@ def get_model(cfg):
                 INPUT_CHANNELS = INPUT_CHANNELS_LIST
                 print("INPUT_CHANNELS is a list, pleae fix it!")
 
-        if cfg.model.ARCH == "SiamUnet_conc":
-            model = SiamUnet_conc(INPUT_CHANNELS, OUT_CHANNELS, \
-                                topo=cfg.model.TOPO, 
-                                share_encoder=cfg.model.SHARE_ENCODER
+        if cfg.MODEL.ARCH == "SiamUnet_conc":
+            model = SiamUnet_conc(INPUT_CHANNELS, cfg.MODEL.NUM_CLASSES, \
+                                topo=cfg.MODEL.TOPO, 
+                                share_encoder=cfg.MODEL.SHARE_ENCODER,
+                                use_deconv=cfg.MODEL.USE_DECONV
                             ) #'FC-Siam-conc'
 
-        if cfg.model.ARCH == "SiamUnet_diff":
-            model = SiamUnet_diff(INPUT_CHANNELS, OUT_CHANNELS, 
-                                topo=cfg.model.TOPO, 
-                                share_encoder=cfg.model.SHARE_ENCODER
+        if cfg.MODEL.ARCH == "SiamUnet_diff":
+            model = SiamUnet_diff(INPUT_CHANNELS, cfg.MODEL.NUM_CLASSES, 
+                                topo=cfg.MODEL.TOPO, 
+                                share_encoder=cfg.MODEL.SHARE_ENCODER,
+                                use_deconv=cfg.MODEL.USE_DECONV
                             ) #'FC-Siam-diff'
 
     
-    if cfg.model.ARCH == "SiamUnet_minDiff":
-        model = SiamUnet_diff(INPUT_CHANNELS, OUT_CHANNELS, topo=cfg.model.TOPO) #'FC-Siam-diff'
+    if cfg.MODEL.ARCH == "SiamUnet_minDiff":
+        model = SiamUnet_diff(INPUT_CHANNELS, cfg.MODEL.NUM_CLASSES, topo=cfg.MODEL.TOPO) #'FC-Siam-diff'
 
-    if cfg.model.ARCH == "cdc_unet":
-        model = cdc_unet(INPUT_CHANNELS, OUT_CHANNELS) #'FC-EF'
+    if cfg.MODEL.ARCH == "cdc_unet":
+        model = cdc_unet(INPUT_CHANNELS, cfg.MODEL.NUM_CLASSES) #'FC-EF'
 
     ########################### Residual UNet ############################
-    if cfg.model.ARCH == 'ResUNet':
-        print(f"===> Network Architecture: {cfg.model.ARCH}")
+    if cfg.MODEL.ARCH == f'UNet_{cfg.MODEL.ENCODER}':
+        INPUT_CHANNELS = sum(INPUT_CHANNELS_LIST)
+        print(f"===> Network Architecture: {cfg.MODEL.ARCH}")
         # create segmentation model with pretrained encoder
 
         model = smp.Unet(
-            encoder_name = cfg.model.ENCODER, 
-            encoder_weights = cfg.model.ENCODER_WEIGHTS, 
+            encoder_name = cfg.MODEL.ENCODER, 
+            encoder_weights = cfg.MODEL.ENCODER_WEIGHTS, 
+            encoder_depth=cfg.MODEL.ENCODER_DEPTH,
+            decoder_channels=cfg.MODEL.TOPO[::-1],
+            # decoder_attention_type="scse",
             in_channels = INPUT_CHANNELS,
-            classes = OUT_CHANNELS, 
-            activation = cfg.model.ACTIVATION,
+            classes = cfg.MODEL.NUM_CLASSES, 
+            activation = None,
         )
 
     # DeepLabV3+
-    if cfg.model.ARCH == 'DeepLabV3+':
-        print(f"===> Network Architecture: {cfg.model.ARCH}")
+    if cfg.MODEL.ARCH == 'DeepLabV3+':
+        print(f"===> Network Architecture: {cfg.MODEL.ARCH}")
         # create segmentation model with pretrained encoder
         model = smp.DeepLabV3Plus(
-            encoder_name = cfg.model.ENCODER, 
-            encoder_weights = cfg.model.ENCODER_WEIGHTS, 
-            classes = OUT_CHANNELS, 
-            activation = cfg.model.ACTIVATION,
+            encoder_name = cfg.MODEL.ENCODER, 
+            encoder_weights = cfg.MODEL.ENCODER_WEIGHTS, 
+            classes = cfg.MODEL.NUM_CLASSES, 
+            activation = cfg.MODEL.ACTIVATION,
             in_channels = INPUT_CHANNELS
         )
 
     
-    if cfg.model.ARCH == 'SiamResUnet':
-        print(f"===> Network Architecture: {cfg.model.ARCH}")
+    if cfg.MODEL.ARCH == 'SiamResUnet':
+        print(f"===> Network Architecture: {cfg.MODEL.ARCH}")
         # create segmentation model with pretrained encoder
 
         input_channels = []
-        for sat in cfg.data.satellites:
-            if cfg.data.stacking: tmp = len(cfg.data.prepost) * INPUT_CHANNELS_DICT[sat]
+        for sat in cfg.DATA.SATELLITES:
+            if cfg.DATA.STACKING: tmp = len(cfg.DATA.PREPOST) * INPUT_CHANNELS_DICT[sat]
             else: tmp = INPUT_CHANNELS_DICT[sat]
             input_channels.append(tmp)
 
         from models.siam_unet_resnet import SiamResUnet
         model = SiamResUnet(
-            encoder_name = cfg.model.ENCODER, 
-            encoder_weights = cfg.model.ENCODER_WEIGHTS, 
+            encoder_name = cfg.MODEL.ENCODER, 
+            encoder_weights = cfg.MODEL.ENCODER_WEIGHTS, 
             in_channels = input_channels,
-            classes = OUT_CHANNELS, 
-            activation = cfg.model.ACTIVATION,
+            classes = cfg.MODEL.NUM_CLASSES, 
+            activation = cfg.MODEL.ACTIVATION,
         )
 
     # print("==================================")
@@ -115,6 +130,9 @@ def get_model(cfg):
     print()
 
     return model
+
+
+
 
 
 if __name__ == "__main__":

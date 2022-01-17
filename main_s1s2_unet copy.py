@@ -2,7 +2,6 @@
 
 import os, json
 import random
-from cv2 import mean, normalize
 from easydict import EasyDict as edict
 from pathlib import Path
 from prettyprinter import pprint
@@ -43,9 +42,6 @@ import wandb
 # Dice/F1 score - https://en.wikipedia.org/wiki/S%C3%B8rensen%E2%80%93Dice_coefficient
 # IoU/Jaccard score - https://en.wikipedia.org/wiki/Jaccard_index
 # diceLoss = smp.utils.losses.DiceLoss(eps=1)
-mse_loss = nn.MSELoss(reduction="mean")
-
-
 from models.loss_ref import soft_dice_loss, soft_dice_loss_balanced, jaccard_like_loss, jaccard_like_balanced_loss
 
 AverageValueMeter =  smp.utils.train.AverageValueMeter
@@ -112,16 +108,9 @@ class SegModel(object):
         self.RUN_DIR = self.PROJECT_DIR / self.cfg.EXP.OUTPUT
         self.MODEL_URL = str(self.RUN_DIR / "model.pth")
 
-
-        ''' load S2 pretrained model '''
-        if self.cfg.MODEL.DISTILL:
-            self.model_pretrained = torch.load(self.cfg.MODEL.PRETRAINED, map_location=torch.device('cpu'))
-            self.model_pretrained.to(self.DEVICE)
-            self.model_pretrained.eval()
-
-        # if self.cfg.MODEL.ENCODER is not None:
+        # if CFG.MODEL.ENCODER is not None:
         #     self.preprocessing_fn = \
-        #         smp.encoders.get_preprocessing_fn(self.cfg.MODEL.ENCODER, self.cfg.MODEL.ENCODER_WEIGHTS)
+        #         smp.encoders.get_preprocessing_fn(CFG.MODEL.ENCODER, CFG.MODEL.ENCODER_WEIGHTS)
 
         self.metrics = [smp.utils.metrics.IoU(threshold=0.5, activation=None),
                         smp.utils.metrics.Fscore(activation=None)
@@ -168,6 +157,16 @@ class SegModel(object):
         train_loader = DataLoader(train_set, batch_size=self.cfg.MODEL.BATCH_SIZE, shuffle=True, num_workers=4, generator=generator)
         valid_loader = DataLoader(val_set, batch_size=self.cfg.MODEL.BATCH_SIZE, shuffle=True, num_workers=4, generator=generator)
         test_loader = DataLoader(valid_dataset, batch_size=self.cfg.MODEL.BATCH_SIZE, shuffle=True, num_workers=4, generator=generator)
+
+# means = []
+# stds = []
+# for img in list(iter(train_loader)):
+#     print(img.shape)
+#     means.append(torch.mean(img))
+#     stds.append(torch.std(img))
+
+# mean = torch.mean(torch.tensor(means))
+# std = torch.mean(torch.tensor(stds))
         
         dataloaders = { 
                         'train': train_loader, \
@@ -268,11 +267,6 @@ class SegModel(object):
         logs = {}
         loss_meter = AverageValueMeter()
         metrics_meters = {metric.__name__: AverageValueMeter() for metric in self.metrics}
-        metrics_meters.update({
-            'loss_base': AverageValueMeter(),
-            'loss_do': AverageValueMeter(),
-            'loss_df': AverageValueMeter()
-        })
 
         # if ('Train' in phase) and (self.cfg.useDataWoCAug):
         #     dataLoader_woCAug = iter(self.dataloaders['Train_woCAug'])
@@ -291,34 +285,12 @@ class SegModel(object):
                 if 'UNet_resnet' in self.cfg.MODEL.ARCH: 
                     input = input[0]
                     out = self.model.forward(input)
-                elif 'distill_unet' == self.cfg.MODEL.ARCH: 
-                    xc, out = self.model.forward(input[:1])
                 else:
                     out = self.model.forward(input)[-1]
                 y_pred = self.activation(out) # If use this, set IoU/F1 metrics activation=None
 
                 ''' compute loss '''
                 loss_ = self.criterion(out, y)
-
-                ''' normalize output or features '''
-                if self.cfg.MODEL.L2_NORM:
-                    l2_norm = lambda x: F.normalize(x, dim=1, p=2)  
-                else: 
-                    l2_norm = Activation(self.cfg.MODEL.ACTIVATION)
-
-                if self.cfg.MODEL.DISTILL:
-                    xc2, out2 = self.model_pretrained.forward(input[-1:])
-                    loss_distill_outout = mse_loss(l2_norm(out), l2_norm(out2))
-                    loss_distill_feat = mse_loss(l2_norm(xc), l2_norm(xc2))
-
-                    metrics_meters['loss_base'].add(loss_.cpu().detach().numpy())
-
-                    loss_ = self.cfg.MODEL.LOSS_COEF[0] * loss_ \
-                        + self.cfg.MODEL.LOSS_COEF[1] * loss_distill_outout \
-                        + self.cfg.MODEL.LOSS_COEF[2] * loss_distill_feat
-
-                    metrics_meters['loss_do'].add(loss_distill_outout.cpu().detach().numpy())
-                    metrics_meters['loss_df'].add(loss_distill_feat.cpu().detach().numpy())
 
                 ''' Back Propergation (BP) '''
                 if phase == 'train':
@@ -384,7 +356,7 @@ def set_random_seed(seed, deterministic=False):
         torch.backends.cudnn.benchmark = False
 
 
-@hydra.main(config_path="./config", config_name="distill_unet")
+@hydra.main(config_path="./config", config_name="unet")
 def run_app(cfg : DictConfig) -> None:
 
     ''' set randome seed '''
@@ -429,14 +401,3 @@ def run_app(cfg : DictConfig) -> None:
 if __name__ == "__main__":
 
     run_app()
-
-
-
-
-
-
-
-
-
-
-                

@@ -4,8 +4,8 @@
 #SBATCH --mem 36GB
 #SBATCH --cpus-per-task 8
 #SBATCH -t 7-00:00:00
-#SBATCH --job-name Jan09-unet
-#SBATCH --output /home/p/u/puzhao/smp-seg-pytorch/run_logs/%x-%A_%a.out
+#SBATCH --job-name sar-unet
+#SBATCH --output /home/p/u/puzhao/run_logs/%x-%A_%a.out
 
 echo "start"
 echo "Starting job ${SLURM_JOB_ID} on ${SLURMD_NODENAME}"
@@ -47,14 +47,16 @@ PYTHONUNBUFFERED=1;
 #             model.max_epoch=5 \
 #             experiment.note=test
 
-python3 main_s1s2_unet.py \
-            --config-name=unet \
-            data.satellites=['S1','S2'] \
-            data.INPUT_BANDS.S2=['B4','B8','B12'] \
-            model.ARCH=UNet \
-            model.batch_size=16 \
-            model.max_epoch=100 \
-            experiment.note=EF-new
+# python3 main_s1s2_unet.py \
+#             --config-name=unet \
+#             data.satellites=['S1','S2'] \
+#             data.INPUT_BANDS.S2=['B4','B8','B12'] \
+#             model.ARCH=UNet \
+#             model.batch_size=16 \
+#             model.max_epoch=100 \
+#             experiment.note=EF-new
+
+
 
 # python3 main_s1s2_unet.py \
 #             data.satellites=['S1','S2'] \
@@ -64,32 +66,51 @@ python3 main_s1s2_unet.py \
 #             model.max_epoch=100 \
 #             experiment.note=S1_TEST
 
-# python3 main_s1s2_unet.py \
-#             --config-name=unet.yaml \
-#             data.satellites=['S1'] \
-#             data.INPUT_BANDS.S2=['B4','B8','B12'] \
-#             model.ARCH=UNet \
-#             model.batch_size=16 \
-#             model.max_epoch=100 \
-#             experiment.note=S1_TEST
+# sbatch run_on_geoinfo/run_unet.sh
+python3 main_s1s2_unet.py \
+            --config-name=unet.yaml \
+            RAND.SEED=0 \
+            RAND.DETERMIN=False \
+            DATA.SATELLITES=['S1'] \
+            MODEL.DEBUG=False \
+            MODEL.ARCH=UNet \
+            MODEL.ENCODER=resnet18 \
+            MODEL.ENCODER_WEIGHTS=imagenet \
+            MODEL.USE_DECONV=True \
+            MODEL.WEIGHT_DECAY=0.01 \
+            MODEL.NUM_CLASSES=1 \
+            MODEL.LOSS_TYPE=DiceLoss \
+            MODEL.LR_SCHEDULER=cosine \
+            MODEL.ACTIVATION=sigmoid \
+            MODEL.BATCH_SIZE=16 \
+            MODEL.MAX_EPOCH=100 \
+            EXP.NOTE=EF
 
-# sbatch --array=0-1 run_on_geoinfo/run_unet.sh
-# SAT=('S1' 'S2')
+# sbatch --array=0-2 run_on_geoinfo/run_unet.sh
+# SAT=('ND' 'VH' 'VV')
 # CFG=${SAT[$SLURM_ARRAY_TASK_ID]}
 # echo "Running simulation $CFG"
 # echo "---------------------------------------------------------------------------------------------------------------"
 
 # python3 main_s1s2_unet.py \
 #             --config-name=unet.yaml \
-#             data.satellites=[$CFG] \
-#             data.prepost=['post'] \
-#             data.stacking=False \
-#             data.INPUT_BANDS.S1=['ND','VH','VV'] \
-#             data.INPUT_BANDS.S2=['B4','B8','B12'] \
-#             model.ARCH=UNet \
-#             model.batch_size=16 \
-#             model.max_epoch=100 \
-#             experiment.note=post
+#             RAND.SEED=0 \
+#             RAND.DETERMIN=False \
+#             DATA.SATELLITES=['S1'] \
+#             DATA.INPUT_BANDS.S1=[$CFG] \
+#             MODEL.DEBUG=False \
+#             MODEL.ARCH=UNet \
+            # MODEL.ENCODER=resnet18 \
+            # MODEL.ENCODER_WEIGHTS=imagenet \
+            # MODEL.USE_DECONV=True \
+            # MODEL.WEIGHT_DECAY=0.01 \
+            # MODEL.NUM_CLASSES=1 \
+            # MODEL.LOSS_TYPE=DiceLoss \
+            # MODEL.LR_SCHEDULER=cosine \
+            # MODEL.ACTIVATION=sigmoid \
+            # MODEL.BATCH_SIZE=16 \
+            # MODEL.MAX_EPOCH=100 \
+            # EXP.NOTE=$CFG
 
 #rm -rf $SLURM_SUBMIT_DIR/*.log
 # rm -rf $SLURM_SUBMIT_DIR/*.out

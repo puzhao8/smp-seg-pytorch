@@ -1,0 +1,78 @@
+
+# defaults:
+#     - s1s2_unet: s1
+
+project:
+    name: IGARSS-2022
+    entity: wildfire
+
+data:
+    # dir: /cephyr/NOBACKUP/groups/snic2021-7-104/wildfire-s1s2-dataset-ak-tiles
+    # dir: /cephyr/NOBACKUP/groups/snic2021-7-104/wildfire-s1s2-dataset-ca-tiles
+    # dir: D:\wildfire-s1s2-dataset-ak-tiles
+    dir: /home/p/u/puzhao/wildfire-s1s2-dataset-ca-tiles
+
+    name: s1s2
+    satellites: ['S1','S2']
+    prepost: ['pre', 'post']
+    stacking: True # stack bi-temporal data
+
+    ALL_BANDS:
+        S1: ['ND', 'VH', 'VV']
+        ALOS: ['ND', 'VH', 'VV']
+        S2: ['B2', 'B3', 'B4', 'B8', 'B11', 'B12']
+
+    INPUT_BANDS:
+        S1: ['ND', 'VH', 'VV']
+        ALOS: ['ND', 'VH', 'VV']
+        S2: ['B2', 'B3', 'B4', 'B8', 'B11', 'B12'] #['B4', 'B8', 'B12']
+        # S2: ['B3', 'B8', 'B12'] #['B4', 'B8', 'B12']
+
+    useDataWoCAug: False
+    SEED: 42
+    random_state: 42
+
+    # CLASSES: ['unburn', 'burned']
+    # CLASSES: ['burned']
+    REF_MASK: poly
+    train_ratio: 0.9
+
+MODEL:
+    DEBUG: False
+    ARCH: UNet #FuseUNet, UNet
+    TOPO: [16, 32, 64, 128]
+    LOSS_TYPE: BCEWithLogitsLoss # smpDiceLoss
+    NUM_CLASSES: 2
+
+    ACTIVATION: argmax2d #sigmoid
+    ENCODER: resnet18 # 'mobilenet_v2'
+    ENCODER_WEIGHTS: imagenet
+
+    max_epoch: 100
+    batch_size: 64
+
+    learning_rate: 1e-4
+    weight_decay: 1e-4
+    LR_SCHEDULER:  poly # ['cosine', 'poly']
+    POLY_SCHEDULER:
+        END_LR: 1e-5
+        POWER: 0.9
+    COSINE_SCHEDULER:
+        WARMUP: 2
+    
+    max_score: 0.1 # If IoU > max_score, save model
+    save_interval: 5 # save model frequency
+    STEP_WISE_LOG: False
+    verbose: True
+
+eval:
+    patchsize: 512
+
+experiment:
+    note: 
+    name: ${data.name}_${model.ARCH}_${data.satellites}_${experiment.note}
+    output: ./outputs/run_${experiment.name}_${now:%Y%m%dT%H%M%S} #${defaults.0.data}
+
+hydra:
+    run:
+        dir: ${experiment.output}

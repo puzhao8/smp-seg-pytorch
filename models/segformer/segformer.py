@@ -1,17 +1,3 @@
-""" SegFormer: Simple and Efficient Design for Semantic Segmentation with Transformers """
-## Official Segformer based on mmcvsegmentation
-# https://arxiv.org/pdf/2105.15203.pdf 
-# https://github.com/NVlabs/SegFormer
-
-## mmcvsegmention 
-# swin.py https://github.com/open-mmlab/mmsegmentation/blob/master/mmseg/models/backbones/swin.py
-# decoder_heads https://github.com/open-mmlab/mmsegmentation/blob/master/mmseg/models/decode_heads/segformer_head.py
-
-## PaddleSeg (Recommended to read first)
-# segformer_head: https://github.com/PaddlePaddle/PaddleSeg/blob/release/2.3/paddleseg/models/segformer.py
-
-
-
 # The SegFormer code was heavily based on https://github.com/NVlabs/SegFormer
 # Users should be careful about adopting these functions in any commercial matters.
 # https://github.com/NVlabs/SegFormer#license
@@ -21,7 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 
-from models.mix_transformer import BACKBONES
+from mix_transformer import BACKBONES
 
 class MLP(nn.Module):
     """
@@ -93,9 +79,6 @@ class SegFormer(nn.Module):
     #         utils.load_entire_model(self, self.pretrained)
 
     def forward(self, x):
-        ''' x should be a list or tuple '''
-        x = torch.cat(x, dim=1) # concat all input tensors, added by puzhao
-
         feats = self.backbone(x)
         c1, c2, c3, c4 = feats
 
@@ -143,65 +126,43 @@ class SegFormer(nn.Module):
         ]
 
 
-
-def SegFormer_B0(in_channels=3, **kwargs):
+def SegFormer_B0(**kwargs):
     return SegFormer(
-        backbone=BACKBONES['MixVisionTransformer_B0'](in_chans=in_channels),
+        backbone=BACKBONES['MixVisionTransformer_B0'](),
         embedding_dim=256,
         **kwargs)
 
 
-def SegFormer_B1(in_channels=3, **kwargs):
+def SegFormer_B1(**kwargs):
     return SegFormer(
-        backbone=BACKBONES['MixVisionTransformer_B1'](in_chans=in_channels),
+        backbone=BACKBONES['MixVisionTransformer_B1'](),
         embedding_dim=256,
         **kwargs)
 
 
-def SegFormer_B2(in_channels=3, **kwargs):
+def SegFormer_B2(**kwargs):
     return SegFormer(
-        backbone=BACKBONES['MixVisionTransformer_B2'](in_chans=in_channels),
+        backbone=BACKBONES['MixVisionTransformer_B2'](),
         embedding_dim=768,
         **kwargs)
 
 
-def SegFormer_B3(in_channels=3, **kwargs):
+def SegFormer_B3(**kwargs):
     return SegFormer(
-        backbone=BACKBONES['MixVisionTransformer_B3'](in_chans=in_channels),
+        backbone=BACKBONES['MixVisionTransformer_B3'](),
         embedding_dim=768,
         **kwargs)
 
 
-def SegFormer_B4(in_channels=3, **kwargs):
+def SegFormer_B4(**kwargs):
     return SegFormer(
-        backbone=BACKBONES['MixVisionTransformer_B4'](in_chans=in_channels),
+        backbone=BACKBONES['MixVisionTransformer_B4'](),
         embedding_dim=768,
         **kwargs)
 
 
-def SegFormer_B5(in_channels=3, **kwargs):
+def SegFormer_B5(**kwargs):
     return SegFormer(
-        backbone=BACKBONES['MixVisionTransformer_B5'](in_chans=in_channels),
+        backbone=BACKBONES['MixVisionTransformer_B5'](),
         embedding_dim=768,
         **kwargs)
-
-
-segformer_models = {
-    'SegFormer_B0': SegFormer_B0,
-    'SegFormer_B1': SegFormer_B1,
-    'SegFormer_B2': SegFormer_B2,
-    'SegFormer_B3': SegFormer_B3,
-    'SegFormer_B4': SegFormer_B4,
-    'SegFormer_B5': SegFormer_B5,
-}
-
-
-if __name__ == "__main__":
-    import torch
-    # from segformer import SegFormer_B2
-
-    
-    tensor = torch.randn(1, 3, 256, 256)
-    model = SegFormer_B0(in_channels=tensor.shape[1], num_classes=2)
-    out = model(tensor)
-    print(out[0].shape)

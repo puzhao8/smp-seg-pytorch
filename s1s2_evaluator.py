@@ -1,5 +1,6 @@
 from ntpath import join
 import os
+import random
 from cv2 import _InputArray_OPENGL_BUFFER
 import matplotlib.pyplot as plt
 from imageio import imread, imsave
@@ -10,11 +11,7 @@ from tqdm import tqdm
 from pathlib import Path
 import tifffile as tiff
 from easydict import EasyDict as edict
-
-import smp
 from smp.base.modules import Activation
-
-
 
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap, LinearSegmentedColormap
@@ -22,7 +19,6 @@ from matplotlib.colors import ListedColormap, LinearSegmentedColormap
 # geotiff = GeoTIFF()
 
 import wandb
-
 def image_padding(img, patchsize):
     def zero_padding(arr, patchsize):
         # print("zero_padding patchsize: {}".format(patchsize))
@@ -40,8 +36,8 @@ def image_padding(img, patchsize):
     return img_pad
 
 def get_band_index_dict(cfg):
-    ALL_BANDS = cfg.data.ALL_BANDS
-    INPUT_BANDS = cfg.data.INPUT_BANDS
+    ALL_BANDS = cfg.DATA.ALL_BANDS
+    INPUT_BANDS = cfg.DATA.INPUT_BANDS
 
     def get_band_index(sat):
         all_bands = list(ALL_BANDS[sat])
@@ -60,8 +56,8 @@ def get_band_index_dict(cfg):
 
 def inference(model, test_dir, test_id, cfg):
 
-    patchsize = cfg.eval.patchsize
-    NUM_CLASS = len(list(cfg.data.CLASSES))
+    patchsize = cfg.EVAL.PATCHSIZE
+    # NUM_CLASS = cfg.MODEL.NUM_CLASSES
     # model.cpu()
 
     if torch.cuda.is_available():
@@ -69,7 +65,7 @@ def inference(model, test_dir, test_id, cfg):
 
     ''' read input data '''
     input_tensors = []
-    for sat in cfg.data.satellites:
+    for sat in cfg.DATA.SATELLITES:
         
         post_url = test_dir / sat / "post" / f"{test_id}.tif"
         post_image = tiff.imread(post_url) # C*H*W
@@ -81,7 +77,7 @@ def inference(model, test_dir, test_id, cfg):
         # img_preprocessed = self.preprocessing_fn(img_pad)
         post_image_tensor = torch.from_numpy(post_image_pad).unsqueeze(0) # n * C * H * W
         
-        if 'pre' in cfg.data.prepost:
+        if 'pre' in cfg.DATA.PREPOST:
             pre_url = test_dir / sat / "pre" / f"{test_id}.tif"
             pre_image = tiff.imread(pre_url)
             pre_image = pre_image[cfg.band_index_dict[sat],] # select bands 
@@ -98,8 +94,8 @@ def inference(model, test_dir, test_id, cfg):
 
     C, H, W = post_image.shape
     _, _, Height, Width = input_tensors[0][0].shape
-    pred_mask_pad = np.zeros((Height, Width))
-    prob_mask_pad = np.zeros((NUM_CLASS, Height, Width))
+    pred_mask_pad = np.zeros((Height, Width)) #HxW
+    prob_mask_pad = np.zeros((Height, Width)) #HxW
 
     ''' tile-wise inference '''
     input_patchsize = 2 * patchsize
@@ -112,10 +108,10 @@ def inference(model, test_dir, test_id, cfg):
             input_patchs = []
             for sat_tensor in input_tensors:
                 post_patch = (sat_tensor[1][..., i:i+input_patchsize, j:j+input_patchsize]).type(torch.cuda.FloatTensor)
-                if 'pre' in cfg.data.prepost: 
+                if 'pre' in cfg.DATA.PREPOST: 
                     pre_patch = (sat_tensor[0][..., i:i+input_patchsize, j:j+input_patchsize]).type(torch.cuda.FloatTensor)
                     
-                    if cfg.data.stacking: 
+                    if cfg.DATA.STACKING: 
                         inputPatch = torch.cat([pre_patch, post_patch], dim=1) # stacked inputs
                         input_patchs.append(inputPatch)
                     else:
@@ -124,46 +120,48 @@ def inference(model, test_dir, test_id, cfg):
                     input_patchs.append(post_patch)
 
             ''' ------------> apply model <--------------- '''
-            # if 'UNet' == cfg.model.ARCH:
-            #     # if len(cfg.data.satellites) == 1: input = input_patchs[0] # single sensor
+            # if 'UNet' == cfg.MODEL.ARCH:
+            #     # if len(cfg.DATA.SATELLITES) == 1: input = input_patchs[0] # single sensor
             #     # else: input = torch.cat(input_patchs) # stack multi-sensor data
             #     out = model.forward(input_patchs)
 
-            if 'distill_unet' == cfg.model.ARCH:
-                if cfg.model.DISTILL:
+            if 'distill_unet' == cfg.MODEL.ARCH:
+                if cfg.MODEL.DISTILL:
                     out = model.forward(input_patchs[:1])[-1] # ONLY USE S1 sensor in distill mode.
                 else:
                     out = model.forward(input_patchs)[-1] # USE all data in pretrain mode.
 
-            elif 'SiamResUNet' in cfg.model.ARCH:
-                out, decoder_out = model.forward(input_patchs, False)
+            elif 'UNet_resnet' in cfg.MODEL.ARCH:
+                out = model.forward(torch.cat(input_patchs, dim=1))
 
-            elif 'cdc_unet' in cfg.model.ARCH:
-                out, decoder_out = model.forward(input_patchs, False)
+            # elif 'SiamResUNet' in cfg.MODEL.ARCH:
+            #     out, decoder_out = model.forward(input_patchs, False)
+
+            # elif 'cdc_unet' in cfg.MODEL.ARCH:
+            #     out, decoder_out = model.forward(input_patchs, False)
             
             else: # UNet, SiamUnet
                 # NEW: input_patchs should be a list or tuple, the last one is the wanted output.
                 out = model.forward(input_patchs)[-1] 
 
             ''' ------------------------------------------ '''
-            activation = Activation(name=cfg.model.ACTIVATION)
-            predPatch = activation(out)
+            activation = Activation(name=cfg.MODEL.ACTIVATION)
+            predPatch = activation(out) #NCWH for sigmoid, NWH for argmax, N=1, C=1
+            predPatch = predPatch.squeeze() #1x1xWxH or 1xWxH -> WxH
 
-            predPatch = predPatch.cpu().detach().numpy()#.round()
+            predPatch = predPatch.cpu().detach().numpy()
+            if 'sigmoid' == cfg.MODEL.ACTIVATION:
+                predLabel = np.round(predPatch) # binarized with 0.5
+            else: # 'argmax'
+                predLabel = predPatch
             
-            if predPatch.shape[0] > 1:
-                predLabel = np.argmax(predPatch, axis=0).squeeze()
-                prob_mask_pad[:, i+padSize:i+padSize+patchsize, j+padSize:j+padSize+patchsize] = predPatch[:, padSize:padSize+patchsize, padSize:padSize+patchsize]  # need to modify
-            else:
-                predPatch = predPatch.squeeze()
-                predLabel = np.round(predPatch)
-                # print(predLabel.shape)
-                prob_mask_pad[:, i+padSize:i+padSize+patchsize, j+padSize:j+padSize+patchsize] = predPatch[padSize:padSize+patchsize, padSize:padSize+patchsize]  # need to modify
+            ''' save predicted tile '''
+            prob_mask_pad[i+padSize:i+padSize+patchsize, j+padSize:j+padSize+patchsize] = predPatch[padSize:padSize+patchsize, padSize:padSize+patchsize]
+            pred_mask_pad[i+padSize:i+padSize+patchsize, j+padSize:j+padSize+patchsize] = predLabel[padSize:padSize+patchsize, padSize:padSize+patchsize]
 
-            pred_mask_pad[i+padSize:i+padSize+patchsize, j+padSize:j+padSize+patchsize] = predLabel[padSize:padSize+patchsize, padSize:padSize+patchsize]  # need to modify
-            
+    ''' clip back into original shape '''        
     pred_mask = pred_mask_pad[padSize:padSize+H, padSize:padSize+W] # clip back to original shape
-    prod_mask = prob_mask_pad[:, padSize:padSize+H, padSize:padSize+W] # clip back to original shape
+    prod_mask = prob_mask_pad[padSize:padSize+H, padSize:padSize+W] # clip back to original shape
 
     return pred_mask, prod_mask
 
@@ -194,7 +192,7 @@ def gen_errMap(grouthTruth, preMap, save_url=False):
 def apply_model_on_event(model, test_id, output_dir, cfg):
     output_dir = Path(output_dir)
     output_dir.mkdir(exist_ok=True)
-    data_dir = Path(cfg.data.dir) / "test_images"
+    data_dir = Path(cfg.DATA.DIR) / "test_images"
 
     # orbKeyLen = len(test_id.split("_")[-1]) + 1 
     # event = test_id[:-orbKeyLen]
@@ -206,7 +204,7 @@ def apply_model_on_event(model, test_id, output_dir, cfg):
     predMask, probMask = inference(model, data_dir, event, cfg)
 
     print(f"predMask shape: {predMask.shape}, unique: {np.unique(predMask)}")
-    print(f"probMask: [{probMask.min()}, {probMask.max()}]")
+    # print(f"probMask: [{probMask.min()}, {probMask.max()}]")
 
     # # mtbs_palette =  ["000000", "006400","7fffd4","ffff00","ff0000","7fff00"]
     # # [0,100/255,0]
@@ -231,12 +229,12 @@ def apply_model_on_event(model, test_id, output_dir, cfg):
 def evaluate_model(cfg, model_url, output_dir):
 
     # import json
-    # json_url = Path(cfg.data.dir) / "train_test.json"
+    # json_url = Path(cfg.DATA.DIR) / "train_test.json"
     # with open(json_url) as json_file:
     #     split_dict = json.load(json_file)
     # test_id_list = split_dict['test']['sarname']
 
-    test_id_list = os.listdir(Path(cfg.data.dir) / "test_images" / "S2" / "post")
+    test_id_list = os.listdir(Path(cfg.DATA.DIR) / "test_images" / "S2" / "post")
     test_id_list = [test_id[:-4] for test_id in test_id_list]
     print(test_id_list[0])
 
@@ -252,17 +250,47 @@ def evaluate_model(cfg, model_url, output_dir):
         apply_model_on_event(model, test_id, output_dir, cfg)
 
 
+def set_random_seed(seed, deterministic=False):
+    """Set random seed.
+
+    Args:
+        seed (int): Seed to be used.
+        deterministic (bool): Whether to set the deterministic option for
+            CUDNN backend, i.e., set `torch.backends.cudnn.deterministic`
+            to True and `torch.backends.cudnn.benchmark` to False.
+            Default: False.
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    if deterministic:
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
 
 import hydra
 import wandb
 from omegaconf import DictConfig, OmegaConf
 
-@hydra.main(config_path="./config", config_name="siam_unet_bitemoral")
+@hydra.main(config_path="./config", config_name="unet")
 def run_app(cfg : DictConfig) -> None:
-    print(OmegaConf.to_yaml(cfg))
 
-    # wandb.init(config=cfg, project=cfg.project.name, name=cfg.experiment.name)
-    wandb.init(config=cfg, project=cfg.project.name, entity=cfg.project.entity, name=cfg.experiment.name)
+    ''' set randome seed '''
+    os.environ['HYDRA_FULL_ERROR'] = str(1)
+    os.environ['PYTHONHASHSEED'] = str(cfg.RAND.SEED) #cfg.RAND.SEED
+    if cfg.RAND.DETERMIN:
+        os.environ['CUBLAS_WORKSPACE_CONFIG']=":4096:8" #https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility
+        torch.use_deterministic_algorithms(True)
+    set_random_seed(cfg.RAND.SEED, deterministic=cfg.RAND.DETERMIN)
+
+    # wandb.init(config=cfg, project=cfg.project.name, name=cfg.EXP.name)
+    import pandas as pd
+    from prettyprinter import pprint
+    
+    cfg_dict = OmegaConf.to_container(cfg, resolve=True)
+    cfg_flat = pd.json_normalize(cfg_dict, sep='.').to_dict(orient='records')[0]
+    wandb.init(config=cfg_flat, project=cfg.PROJECT.NAME, entity=cfg.PROJECT.ENTITY, name=cfg.EXP.NAME)
+    pprint(cfg_flat)
 
     # project_dir = Path(hydra.utils.get_original_cwd())
     #########################################################################
@@ -280,10 +308,16 @@ def run_app(cfg : DictConfig) -> None:
     # for test_id in test_id_list:
     #     apply_model_on_event(model, test_id, output_dir, satellites=['S1', 'S2'])
 
-    run_dir = Path("/home/p/u/puzhao/smp-seg-pytorch/outputs/run_s1s2_distill_unet_S1_distill_20220108T165457")
+    run_dir = Path("/home/p/u/puzhao/smp-seg-pytorch/outputs/run_s1s2_UNet_resnet18_['S1']_prepost-wd-1e-3_20220113T202555")
     model_url = run_dir / "model.pth"
     output_dir = run_dir / "errMap"
     evaluate_model(cfg, model_url, output_dir)
+
+    ''' compute IoU and F1 for all events '''
+    from utils.iou4all import compute_IoU_F1
+    compute_IoU_F1(phase="test_images", 
+                    result_dir=run_dir / "errMap", 
+                    dataset_dir=cfg.DATA.DIR)
     
     #########################################################################
     wandb.finish()

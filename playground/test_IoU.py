@@ -14,14 +14,19 @@ def IoU_score(gt, pr, eps=1e-3):
     return intersection / union, intersection, union
 
 
+phase = 'test_images'
+event_dir = Path(f"/home/p/u/puzhao/wildfire-s1s2-dataset-ca-tiles/{phase}/S2/post")
+result_dir = Path("/home/p/u/puzhao/smp-seg-pytorch/outputs/run_s1s2_UNet_['S2']_allBands_20220107T222557/errMap")
+
+
 # Fresh
 # result_dir = Path("/home/p/u/puzhao/smp-seg-pytorch/outputs/run_s1s2_Paddle_unet_resnet18_['S1']_20211224T210446/errMap_tiles")
 # event_dir = Path("/home/p/u/puzhao/wildfire-s1s2-dataset-ca-tiles/test/S2/post")
 
-# V0
-phase = 'test_images'
-result_dir = Path(f"/home/p/u/puzhao/smp-seg-pytorch/outputs/run_s1s2_UNet_resnet18_['S2']_TEST_20220107T175600/errMap")
-event_dir = Path(f"/home/p/u/puzhao/wildfire-s1s2-dataset-ca-tiles/{phase}/S2/post")
+# # V0
+# phase = 'test_images'
+# result_dir = Path(f"/home/p/u/puzhao/smp-seg-pytorch/outputs/run_s1s2_UNet_resnet18_['S2']_TEST_20220107T175600/errMap")
+# event_dir = Path(f"/home/p/u/puzhao/wildfire-s1s2-dataset-ca-tiles/{phase}/S2/post")
 
 # /home/p/u/puzhao/smp-seg-pytorch/outputs/run_s1s2_Paddle_unet_resnet18_['S1']_V0_20211225T005247/errMap_train_tiles
 

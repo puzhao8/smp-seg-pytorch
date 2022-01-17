@@ -53,7 +53,7 @@ class UNet(nn.Module):
             topo=[16, 32, 64, 128],
             # topo=[16, 32, 64],
             align_corners=False,
-            use_deconv=False,
+            use_deconv=False, # False
             pretrained=None):
         super().__init__()
 
@@ -166,7 +166,7 @@ class UpSampling(nn.Module):
                  in_channels,
                  out_channels,
                  align_corners,
-                 use_deconv=False):
+                 use_deconv=True):
         super().__init__()
 
         self.align_corners = align_corners
@@ -222,11 +222,13 @@ class ConvBNReLU(nn.Module):
 
         self._batch_norm = nn.BatchNorm2d(out_channels)
         self._relu = nn.ReLU()
+        # self._dropout = nn.Dropout2d(p=0.1) # added by puzhao
 
     def forward(self, x):
         x = self._conv(x)
         x = self._batch_norm(x)
         x = self._relu(x)
+        # x = self._dropout(x) # added by puzhao
         return x
 
 
@@ -236,14 +238,16 @@ if __name__ == "__main__":
     import numpy as np
     from torchsummary import summary
 
+    torch.use_deterministic_algorithms(True)
+
     x1 = np.random.rand(10,12,256,256)
     # x2 = np.random.rand(10,3,256,256)
-    x1 = torch.from_numpy(x1).type(torch.FloatTensor)#.cuda().type(torch.cuda.FloatTensor)
+    x1 = torch.from_numpy(x1).type(torch.FloatTensor).cuda().type(torch.cuda.FloatTensor)
     # x2 = torch.from_numpy(x2).type(torch.FloatTensor)#.cuda().type(torch.cuda.FloatTensor)
 
     myunet = UNet(input_channels=x1.shape[1])
     # myunet.cuda()
 
-    # print(myunet)
-    print(myunet.forward([x1])[-1].shape)
+    print(myunet)
+    # print(myunet.forward([x1])[-1].shape)
     # summary(myunet, (3,256,256))

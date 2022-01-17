@@ -1,68 +1,80 @@
-project:
-    name: IGARSS-2022
-    entity: wildfire
 
-data:
-    name: s1s2
-    satellites: ['S2']
-    prepost: ['pre', 'post']
-    stacking: False
-    # dir: /cephyr/NOBACKUP/groups/snic2021-7-104/wildfire-s1s2-dataset-ca-tiles
-    dir: /home/p/u/puzhao/wildfire-s1s2-dataset-ca-tiles
-    # dir: D:\wildfire-s1s2-dataset-ak-tiles
+# defaults:
+#     - s1s2_unet: s1
+
+PROJECT:
+    NAME: IGARSS-2022
+    ENTITY: wildfire
+
+RAND: # Rrproduce Results
+    SEED: 42
+    DETERMIN: True
+
+DATA:
+    NAME: s1s2
+    DIR: /home/p/u/puzhao/wildfire-s1s2-dataset-ca-tiles
+    # DIR: /cephyr/NOBACKUP/groups/snic2021-7-104/wildfire-s1s2-dataset-ak-tiles
+    # DIR: /cephyr/NOBACKUP/groups/snic2021-7-104/wildfire-s1s2-dataset-ca-tiles
+
+    SATELLITES: ['S1']
+    PREPOST: ['pre','post']
+    STACKING: True # stack bi-temporal data
 
     ALL_BANDS:
-        S1: ['ND', 'VH', 'VV']
         ALOS: ['ND', 'VH', 'VV']
+        S1: ['ND', 'VH', 'VV']
         S2: ['B2', 'B3', 'B4', 'B8', 'B11', 'B12']
 
     INPUT_BANDS:
-        S1: ['ND', 'VH', 'VV']
         ALOS: ['ND', 'VH', 'VV']
-        # S2: ['B8', 'B11', 'B12']
+        S1: ['ND', 'VH', 'VV']
         S2: ['B2', 'B3', 'B4', 'B8', 'B11', 'B12'] #['B4', 'B8', 'B12']
+        # S2: ['B3', 'B8', 'B12'] #['B4', 'B8', 'B12']
 
-    useDataWoCAug: False
-    SEED: 42
-    random_state: 42
-
-    # CLASSES: ['unburn', 'burned']
-    CLASSES: ['burned']
     REF_MASK: poly
-    train_ratio: 0.9
+    TRAIN_RATIO: 0.9
 
+MODEL:
+    DEBUG: True
 
-model:
-    ARCH: SiamUnet_conc #Paddle_unet #FuseUNet #FuseUNet, UNet
-    TOPO: [16, 32, 64, 128]
+    AARCH: SiamUnet_conc #Paddle_unet #FuseUNet #FuseUNet, UNet
     SHARE_ENCODER: True
 
-    # TOPO: [32, 64, 128, 256]
-    ACTIVATION: sigmoid
+    TOPO: [16, 32, 64, 128]
+    USE_DECONV: True
+    LOSS_TYPE: DiceLoss # DiceLoss
+    NUM_CLASSES: 1
+    ACTIVATION: sigmoid #sigmoid
+
     ENCODER: resnet18 # 'mobilenet_v2'
-    ENCODER_WEIGHTS: imagenet
+    ENCODER_DEPTH: 4
+    ENCODER_WEIGHTS: null
 
-    max_epoch: 100
-    batch_size: 16
-    learning_rate: 1e-4
-    weight_decay: 1e-4
-    cross_domain_coef: 0
+    MAX_EPOCH: 100
+    BATCH_SIZE: 16
 
-    use_lr_scheduler: True
-    warmup_coef: 2
+    LEARNING_RATE: 1e-4
+    WEIGHT_DECAY: 1e-3
+    LR_SCHEDULER:  poly # ['cosine', 'poly']
+    POLY_SCHEDULER:
+        END_LR: 1e-5
+        POWER: 0.9
+    COSINE_SCHEDULER:
+        WARMUP: 2
     
-    max_score: 0.1 # If IoU > max_score, save model
-    save_interval: 5 # save model frequency
-    verbose: True
+    MAX_SCORE: 0.1 # If IoU > max_score, save model
+    SAVE_INTERVAL: 5 # save model frequency
+    STEP_WISE_LOG: False # log metrics every step/update
+    VERBOSE: True
 
-eval:
-    patchsize: 512
+EVAL:
+    PATCHSIZE: 512
 
-experiment:
-    note: 
-    name: ${data.name}_${model.ARCH}_${data.satellites}_${experiment.note}
-    output: ./outputs/run_${experiment.name}_${now:%Y%m%dT%H%M%S} #${defaults.0.data}
+EXP:
+    NOTE: 
+    NAME: ${DATA.NAME}_${MODEL.ARCH}_${DATA.SATELLITES}_${EXP.NOTE}
+    OUTPUT: ./outputs/run_${EXP.NAME}_${now:%Y%m%dT%H%M%S} #${defaults.0.data}
 
 hydra:
     run:
-        dir: ${experiment.output}
+        dir: ${EXP.OUTPUT}

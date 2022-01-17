@@ -38,10 +38,20 @@ conda activate pytorch
 PYTHONUNBUFFERED=1; 
 
 # sbatch run_on_geoinfo/run_eval.sh
+# python3 s1s2_evaluator.py \
+#     --config-name=distill_unet.yaml \
+#     model.ARCH=distill_unet \
+#     experiment.note=eval
+
+# sbatch run_on_geoinfo/run_eval.sh
 python3 s1s2_evaluator.py \
-    --config-name=distill_unet.yaml \
-    model.ARCH=distill_unet \
-    experiment.note=eval
+            --config-name=unet.yaml \
+            RAND.SEED=0 \
+            RAND.DETERMIN=True \
+            DATA.SATELLITES=['S1'] \
+            DATA.INPUT_BANDS.S2=['B4','B8','B12'] \
+            MODEL.DEBUG=False \
+            EXP.NOTE=prepost-wd-0.001-eval
 
 #rm -rf $SLURM_SUBMIT_DIR/*.log
 # rm -rf $SLURM_SUBMIT_DIR/*.out

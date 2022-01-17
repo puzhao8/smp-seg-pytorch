@@ -82,7 +82,7 @@ class SiamUnet_conc(nn.Module):
         print(f"Encoder TOPO: ", topo)
         # print(f"Decoder TOPO: ", decoder_topo)
 
-    def forward(self, x, train=True):
+    def forward(self, x):
         ''' x1, x2 should come from different sensor, or different time '''
         x1, x2 = x
 
@@ -176,6 +176,7 @@ class SiamUnet_diff(nn.Module):
         for cut1, cut2 in zip(short_cuts1, short_cuts2):
             # stacked_feat = torch.cat((cut1, cut2), dim=1)
             diff_feat = torch.subtract(cut1, cut2)
+            # diff_feat = torch.abs(diff_feat)
             short_cut.append(diff_feat)
 
         # print("--------------------")

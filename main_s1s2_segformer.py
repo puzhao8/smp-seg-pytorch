@@ -1,4 +1,3 @@
-# checkpoint: https://github.com/pytorch/examples/blob/42e5b996718797e45c46a25c55b031e6768f8440/imagenet/main.py#L89-L101
 
 import os, json
 import random
@@ -22,7 +21,6 @@ from omegaconf import DictConfig, OmegaConf
 import copy
 import time
 import torch
-
 import torch.optim as optim
 import torch.nn as nn
 import torch.nn.functional as F
@@ -38,7 +36,7 @@ from smp.base.modules import Activation
 from models.model_selection import get_model
 import wandb
 
-# f_score = smp.utils.functional.f_score
+f_score = smp.utils.functional.f_score
 # Dice/F1 score - https://en.wikipedia.org/wiki/S%C3%B8rensen%E2%80%93Dice_coefficient
 # IoU/Jaccard score - https://en.wikipedia.org/wiki/Jaccard_index
 # diceLoss = smp.utils.losses.DiceLoss(eps=1)
@@ -53,7 +51,7 @@ from dataset.augument import get_training_augmentation, \
 from torch.utils.data import DataLoader
 from dataset.wildfire import S1S2 as Dataset # ------------------------------------------------------- Dataset
 
-from models.lr_schedule import get_cosine_schedule_with_warmup, PolynomialLRDecay
+from models.lr_schedule import get_cosine_schedule_with_warmup
 
 
 def format_logs(logs):
@@ -61,33 +59,30 @@ def format_logs(logs):
     s = ', '.join(str_logs)
     return s
 
+# Loss Functions
+def loss_fun(cfg, DEVICE='cuda'):
+    if cfg.model.LOSS_TYPE == 'BCEWithLogitsLoss':
+        criterion = nn.BCEWithLogitsLoss()
 
-def loss_fun(CFG, DEVICE='cuda'):
-    if CFG.MODEL.LOSS_TYPE == 'BCELoss':
-        criterion = nn.BCELoss()
+    elif cfg.model.LOSS_TYPE == 'smpDiceLoss':
+        criterion = smp.utils.losses.DiceLoss(eps=1)
 
-    elif CFG.MODEL.LOSS_TYPE == 'BCEWithLogitsLoss':
-        criterion = nn.BCEWithLogitsLoss() # includes sigmoid activation
-
-    elif CFG.MODEL.LOSS_TYPE == 'DiceLoss':
-        criterion = smp.utils.losses.DiceLoss(eps=1, activation=CFG.MODEL.ACTIVATION)
-
-    elif CFG.MODEL.LOSS_TYPE == 'CrossEntropyLoss':
-        balance_weight = [CFG.MODEL.NEGATIVE_WEIGHT, CFG.MODEL.POSITIVE_WEIGHT]
+    elif cfg.model.LOSS_TYPE == 'CrossEntropyLoss':
+        balance_weight = [cfg.MODEL.NEGATIVE_WEIGHT, cfg.MODEL.POSITIVE_WEIGHT]
         balance_weight = torch.tensor(balance_weight).float().to(DEVICE)
         criterion = nn.CrossEntropyLoss(weight = balance_weight)
-        
-    elif CFG.MODEL.LOSS_TYPE == 'SoftDiceLoss':
+
+    elif cfg.model.LOSS_TYPE == 'SoftDiceLoss':
         criterion = soft_dice_loss 
-    elif CFG.MODEL.LOSS_TYPE == 'SoftDiceBalancedLoss':
+    elif cfg.model.LOSS_TYPE == 'SoftDiceBalancedLoss':
         criterion = soft_dice_loss_balanced
-    elif CFG.MODEL.LOSS_TYPE == 'JaccardLikeLoss':
+    elif cfg.model.LOSS_TYPE == 'JaccardLikeLoss':
         criterion = jaccard_like_loss
-    elif CFG.MODEL.LOSS_TYPE == 'ComboLoss':
+    elif cfg.model.LOSS_TYPE == 'ComboLoss':
         criterion = lambda pred, gts: F.binary_cross_entropy_with_logits(pred, gts) + soft_dice_loss(pred, gts)
-    elif CFG.MODEL.LOSS_TYPE == 'WeightedComboLoss':
+    elif cfg.model.LOSS_TYPE == 'WeightedComboLoss':
         criterion = lambda pred, gts: F.binary_cross_entropy_with_logits(pred, gts) + 10 * soft_dice_loss(pred, gts)
-    elif CFG.MODEL.LOSS_TYPE == 'FrankensteinLoss':
+    elif cfg.model.LOSS_TYPE == 'FrankensteinLoss':
         criterion = lambda pred, gts: F.binary_cross_entropy_with_logits(pred, gts) + jaccard_like_balanced_loss(pred, gts)
 
     return criterion
@@ -95,46 +90,46 @@ def loss_fun(CFG, DEVICE='cuda'):
 class SegModel(object):
     def __init__(self, cfg) -> None:
         super().__init__()
-        self.PROJECT_DIR = Path(hydra.utils.get_original_cwd())
+        self.project_dir = Path(hydra.utils.get_original_cwd())
 
         self.cfg = cfg
         self.DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-        # self.DEVICE = 'cpu'
 
         self.model = get_model(cfg)
-        self.activation = Activation(self.cfg.MODEL.ACTIVATION)
+        self.activation = Activation(cfg.model.ACTIVATION)
 
-        # self.MODEL_URL = str(self.PROJECT_DIR / "outputs" / "best_model.pth")
-        self.RUN_DIR = self.PROJECT_DIR / self.cfg.EXP.OUTPUT
-        self.MODEL_URL = str(self.RUN_DIR / "model.pth")
+        # self.model_url = str(self.project_dir / "outputs" / "best_model.pth")
+        self.rundir = self.project_dir / self.cfg.experiment.output
+        self.model_url = str( self.rundir / "model.pth")
 
-        # if self.cfg.MODEL.ENCODER is not None:
+        # if cfg.model.ENCODER is not None:
         #     self.preprocessing_fn = \
-        #         smp.encoders.get_preprocessing_fn(self.cfg.MODEL.ENCODER, self.cfg.MODEL.ENCODER_WEIGHTS)
+        #         smp.encoders.get_preprocessing_fn(cfg.model.ENCODER, cfg.model.ENCODER_WEIGHTS)
 
-        self.metrics = [smp.utils.metrics.IoU(threshold=0.5, activation=None),
-                        smp.utils.metrics.Fscore(activation=None)
+        self.metrics = [smp.utils.metrics.IoU(threshold=0.5),
+                        smp.utils.metrics.Fscore()
                     ]
 
         '''--------------> need to improve <-----------------'''
         # specify data folder
-        self.TRAIN_DIR = Path(self.cfg.DATA.DIR) / 'train'
-        self.VALID_DIR = Path(self.cfg.DATA.DIR) / 'test'
+        self.train_dir = Path(self.cfg.data.dir) / 'train'
+        self.valid_dir = Path(self.cfg.data.dir) / 'test'
         '''--------------------------------------------------'''
+
     
     def get_dataloaders(self) -> dict:
 
-        if self.cfg.MODEL.NUM_CLASSES == 1:
+        if self.cfg.model.NUM_CLASSES == 1:
             classes = ['burned']
-        elif self.cfg.MODEL.NUM_CLASSES == 2:
+        elif self.cfg.model.NUM_CLASSES == 2:
             classes = ['unburn', 'burned']
-        elif self.cfg.MODEL.NUM_CLASSES > 2:
+        elif self.cfg.model.NUM_CLASSES > 2:
             print(" ONLY ALLOW ONE or TWO CLASSES SO FAR !!!")
             pass
 
         """ Data Preparation """
         train_dataset = Dataset(
-            self.TRAIN_DIR, 
+            self.train_dir, 
             self.cfg, 
             # augmentation=get_training_augmentation(), 
             # preprocessing=get_preprocessing(self.preprocessing_fn),
@@ -142,32 +137,21 @@ class SegModel(object):
         )
 
         valid_dataset = Dataset(
-            self.VALID_DIR, 
+            self.valid_dir, 
             self.cfg, 
             # augmentation=get_validation_augmentation(), 
             # preprocessing=get_preprocessing(self.preprocessing_fn),
             classes=classes,
         )
 
-        generator=torch.Generator().manual_seed(self.cfg.RAND.SEED)
-        train_size = int(len(train_dataset) * self.cfg.DATA.TRAIN_RATIO)
+        train_size = int(len(train_dataset) * self.cfg.data.train_ratio)
         valid_size = len(train_dataset) - train_size
-        train_set, val_set = torch.utils.data.random_split(train_dataset, [train_size, valid_size], generator=generator)
+        train_set, val_set = torch.utils.data.random_split(train_dataset, [train_size, valid_size])
 
-        train_loader = DataLoader(train_set, batch_size=self.cfg.MODEL.BATCH_SIZE, shuffle=True, num_workers=4, generator=generator)
-        valid_loader = DataLoader(val_set, batch_size=self.cfg.MODEL.BATCH_SIZE, shuffle=True, num_workers=4, generator=generator)
-        test_loader = DataLoader(valid_dataset, batch_size=self.cfg.MODEL.BATCH_SIZE, shuffle=True, num_workers=4, generator=generator)
+        train_loader = DataLoader(train_set, batch_size=self.cfg.model.batch_size, shuffle=True, num_workers=4)
+        valid_loader = DataLoader(val_set, batch_size=self.cfg.model.batch_size, shuffle=True, num_workers=4)
+        test_loader = DataLoader(valid_dataset, batch_size=self.cfg.model.batch_size, shuffle=False, num_workers=4)
 
-# means = []
-# stds = []
-# for img in list(iter(train_loader)):
-#     print(img.shape)
-#     means.append(torch.mean(img))
-#     stds.append(torch.std(img))
-
-# mean = torch.mean(torch.tensor(means))
-# std = torch.mean(torch.tensor(stds))
-        
         dataloaders = { 
                         'train': train_loader, \
                         'valid': valid_loader, \
@@ -182,50 +166,29 @@ class SegModel(object):
 
 
     def run(self) -> None:
-        self.model.to(self.DEVICE)
-        self.criterion = loss_fun(self.cfg)
-
         self.dataloaders = self.get_dataloaders()
         self.optimizer = torch.optim.Adam([dict(
                 params=self.model.parameters(), 
-                lr=self.cfg.MODEL.LEARNING_RATE, 
-                weight_decay=self.cfg.MODEL.WEIGHT_DECAY)])
+                lr=self.cfg.model.learning_rate, 
+                weight_decay=self.cfg.model.weight_decay)])
 
-        """ ===================== >> learning rate scheduler << ========================= """
-        per_epoch_steps = self.dataloaders['train_size'] // self.cfg.MODEL.BATCH_SIZE
-        total_training_steps = self.cfg.MODEL.MAX_EPOCH * per_epoch_steps
-
-        self.USE_LR_SCHEDULER = True \
-            if self.cfg.MODEL.LR_SCHEDULER in ['cosine_warmup', 'polynomial'] \
-            else True
-
-        if self.cfg.MODEL.LR_SCHEDULER == 'cosine':
-            ''' cosine scheduler '''
-            warmup_steps = self.cfg.MODEL.COSINE_SCHEDULER.WARMUP * per_epoch_steps
+        # lr scheduler
+        per_epoch_steps = self.dataloaders['train_size'] // self.cfg.model.batch_size
+        total_training_steps = self.cfg.model.max_epoch * per_epoch_steps
+        warmup_steps = self.cfg.model.warmup_coef * per_epoch_steps
+        if self.cfg.model.use_lr_scheduler:
             self.lr_scheduler = get_cosine_schedule_with_warmup(self.optimizer, warmup_steps, total_training_steps)
 
-        elif self.cfg.MODEL.LR_SCHEDULER == 'poly':
-            ''' polynomial '''
-            self.lr_scheduler = PolynomialLRDecay(self.optimizer, 
-                            max_decay_steps=total_training_steps, 
-                            end_learning_rate=self.cfg.MODEL.POLY_SCHEDULER.END_LR, #1e-5, 
-                            power=self.cfg.MODEL.POLY_SCHEDULER.POWER, #0.9
-                        )
-        else:
-            pass
-
-
-        # self.history_logs = edict()
-        # self.history_logs['train'] = []
-        # self.history_logs['valid'] = []
-        # self.history_logs['test'] = []
+        self.history_logs = edict()
+        self.history_logs['train'] = []
+        self.history_logs['valid'] = []
+        self.history_logs['test'] = []
 
         # --------------------------------- Train -------------------------------------------
-        max_score = self.cfg.MODEL.MAX_SCORE
-        self.iters = 0
-        for epoch in range(0, self.cfg.MODEL.MAX_EPOCH):
+        max_score = self.cfg.model.max_score
+        for epoch in range(0, self.cfg.model.max_epoch):
             epoch = epoch + 1
-            print(f"\n==> train epoch: {epoch}/{self.cfg.MODEL.MAX_EPOCH}")
+            print(f"\n==> train epoch: {epoch}/{self.cfg.model.max_epoch}")
             self.train_one_epoch(epoch)
             valid_logs = self.valid_logs
             
@@ -233,9 +196,9 @@ class SegModel(object):
             if valid_logs['iou_score'] > max_score:
                 max_score = valid_logs['iou_score']
 
-                if (1 == epoch) or (0 == (epoch % self.cfg.MODEL.SAVE_INTERVAL)):
-                    torch.save(self.model, self.MODEL_URL)
-                    # torch.save(self.model.state_dict(), self.MODEL_URL)
+                if (1 == epoch) or (0 == (epoch % self.cfg.model.save_interval)):
+                    torch.save(self.model, self.model_url)
+                    # torch.save(self.model.state_dict(), self.model_url)
                     print('Model saved!')
 
             # if epoch % 50 == 0:
@@ -243,7 +206,8 @@ class SegModel(object):
                         
         
     def train_one_epoch(self, epoch):
-    
+        self.model.to(self.DEVICE)
+        
         # wandb.
         for phase in ['train', 'valid', 'test']:
             if phase == 'train':
@@ -254,11 +218,11 @@ class SegModel(object):
             logs = self.step(phase) 
             # print(phase, logs)
 
-            currlr = self.optimizer.param_groups[0]['lr'] 
+            currlr = self.lr_scheduler.get_last_lr()[0] if self.cfg.model.use_lr_scheduler else self.optimizer.param_groups[0]['lr']          
             wandb.log({phase: logs, 'epoch': epoch, 'lr': currlr})
 
-            # temp = [logs["total_loss"]] + [logs[self.metrics[i].__name__] for i in range(0, len(self.metrics))]
-            # self.history_logs[phase].append(temp)
+            temp = [logs["total_loss"]] + [logs[self.metrics[i].__name__] for i in range(0, len(self.metrics))]
+            self.history_logs[phase].append(temp)
 
             if phase == 'valid': self.valid_logs = logs
 
@@ -271,54 +235,44 @@ class SegModel(object):
         # if ('Train' in phase) and (self.cfg.useDataWoCAug):
         #     dataLoader_woCAug = iter(self.dataloaders['Train_woCAug'])
 
-        with tqdm(iter(self.dataloaders[phase]), desc=phase, file=sys.stdout, disable=not self.cfg.MODEL.VERBOSE) as iterator:
-            for i, (x, y) in enumerate(iterator):
+        with tqdm(iter(self.dataloaders[phase]), desc=phase, file=sys.stdout, disable=not self.cfg.model.verbose) as iterator:
+            for (x, y) in iterator:
                 self.optimizer.zero_grad()
 
                 ''' move data to GPU '''
                 input = []
-                for x_ in x: input.append(x_.to(self.DEVICE))
+                for x_i in x: input.append(x_i.to(self.DEVICE))
                 y = y.to(self.DEVICE)
                 # print(len(input))
 
                 ''' do prediction '''
-                if 'UNet_resnet' in self.cfg.MODEL.ARCH: 
-                    input = input[0]
-                    out = self.model.forward(input)
-                else:
-                    out = self.model.forward(input)[-1]
-                y_pred = self.activation(out) # If use this, set IoU/F1 metrics activation=None
+                out = self.model.forward(input)[-1]
+                # y_pred = self.activation(out)
 
                 ''' compute loss '''
-                loss_ = self.criterion(out, y)
+                # loss_ = diceLoss(y_pred, y)
 
-                ''' Back Propergation (BP) '''
+                criterion = loss_fun(self.cfg)
+                loss_ = criterion(out, y)
+
                 if phase == 'train':
                     loss_.backward()
                     self.optimizer.step()
-                    self.iters = self.iters + 1
 
-                    ''' Iteration-Wise log for train stage only '''
-                    if self.cfg.MODEL.STEP_WISE_LOG:
-                        self.iters = self.iters + 1
-                        currlr = self.optimizer.param_groups[0]['lr'] 
-                        # wandb.log({'x0.mean': x[0].mean()})
-                        wandb.log({phase: logs, 'iters': self.iters, 'lr': currlr})
-
-                    if self.USE_LR_SCHEDULER:
+                    if self.cfg.model.use_lr_scheduler:
                         self.lr_scheduler.step()
 
-                # if mask is in one-hot: NCWH, C=NUM_CLASSES (C>1), and do nothing if C=1
-                if y.shape[1] >= 2: 
-                    y = self.activation(y)
-
-                ''' update loss and metrics logs '''
                 # update loss logs
                 loss_value = loss_.cpu().detach().numpy()
                 loss_meter.add(loss_value)
                 # loss_logs = {criterion.__name__: loss_meter.mean}
                 loss_logs = {'total_loss': loss_meter.mean}
                 logs.update(loss_logs)
+
+                # added for NUM_CLASSES >= 2
+                if self.cfg.model.NUM_CLASSES >= 2:
+                    y_pred = self.activation(out)
+                    y = self.activation(y)
 
                 # update metrics logs
                 for metric_fn in self.metrics:
@@ -327,13 +281,20 @@ class SegModel(object):
 
                 metrics_logs = {k: v.mean for k, v in metrics_meters.items()}
                 logs.update(metrics_logs)
-                # print(self.iters, x[0].mean().item(), loss_.item())
+                # print(logs)
 
-                if self.cfg.MODEL.VERBOSE:
+                if self.cfg.model.verbose:
                     s = format_logs(logs)
                     iterator.set_postfix_str(s)
 
-        return logs
+                # if phase == 'train':
+                #     loss_.backward()
+                #     self.optimizer.step()
+
+                #     if self.cfg.model.use_lr_scheduler:
+                #         self.lr_scheduler.step()
+
+            return logs
 ##############################################################
 
 
@@ -356,48 +317,34 @@ def set_random_seed(seed, deterministic=False):
         torch.backends.cudnn.benchmark = False
 
 
-@hydra.main(config_path="./config", config_name="unet")
+@hydra.main(config_path="./config", config_name="segformer")
 def run_app(cfg : DictConfig) -> None:
-
-    ''' set randome seed '''
-    os.environ['HYDRA_FULL_ERROR'] = str(1)
-    os.environ['PYTHONHASHSEED'] = str(cfg.RAND.SEED) #cfg.RAND.SEED
-    if cfg.RAND.DETERMIN:
-        os.environ['CUBLAS_WORKSPACE_CONFIG']=":4096:8" #https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility
-        torch.use_deterministic_algorithms(True)
-    set_random_seed(cfg.RAND.SEED, deterministic=cfg.RAND.DETERMIN)
-
-    # wandb.init(config=cfg, project=cfg.project.name, name=cfg.EXP.name)
+    # wandb.init(config=cfg, project=cfg.project.name, name=cfg.experiment.name)
     import pandas as pd
     from prettyprinter import pprint
+    from easydict import EasyDict as edict
     
     cfg_dict = OmegaConf.to_container(cfg, resolve=True)
     cfg_flat = pd.json_normalize(cfg_dict, sep='.').to_dict(orient='records')[0]
 
-    # cfg.MODEL.DEBUG = False
-    # if not cfg.MODEL.DEBUG:
-    wandb.init(config=cfg_flat, project=cfg.PROJECT.NAME, entity=cfg.PROJECT.ENTITY, name=cfg.EXP.NAME)
+    if not cfg.model.DEBUG:
+        wandb.init(config=cfg_flat, project=cfg.project.name, entity=cfg.project.entity, name=cfg.experiment.name)
     pprint(cfg_flat)
+    
+    # set randome seed
+    set_random_seed(cfg.data.SEED)
 
-    ''' train '''
     # from experiments.seg_model import SegModel
     mySegModel = SegModel(cfg)
     mySegModel.run()
 
-    ''' inference '''
+    # evaluation
     from s1s2_evaluator import evaluate_model
-    evaluate_model(cfg, mySegModel.MODEL_URL, mySegModel.RUN_DIR / "errMap")
-
-    ''' compute IoU and F1 for all events '''
-    from utils.iou4all import compute_IoU_F1
-    compute_IoU_F1(phase="test_images", 
-                    result_dir=mySegModel.RUN_DIR / "errMap", 
-                    dataset_dir=cfg.DATA.DIR)
+    evaluate_model(cfg, mySegModel.model_url, mySegModel.rundir / "errMap")
     
-    # if not cfg.MODEL.DEBUG:
-    wandb.finish()
+    if not cfg.model.DEBUG:
+        wandb.finish()
 
 
 if __name__ == "__main__":
-
     run_app()

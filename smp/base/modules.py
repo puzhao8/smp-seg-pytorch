@@ -34,6 +34,8 @@ class Conv2dReLU(nn.Sequential):
         )
         relu = nn.ReLU(inplace=True)
 
+        dropout = nn.Dropout2d(p=0.2) # added by puzhao
+
         if use_batchnorm == "inplace":
             bn = InPlaceABN(out_channels, activation="leaky_relu", activation_param=0.0)
             relu = nn.Identity()
@@ -44,7 +46,8 @@ class Conv2dReLU(nn.Sequential):
         else:
             bn = nn.Identity()
 
-        super(Conv2dReLU, self).__init__(conv, bn, relu)
+        # super(Conv2dReLU, self).__init__(conv, bn, relu)
+        super(Conv2dReLU, self).__init__(conv, bn, relu, dropout) # added by puzhao
 
 
 class SCSEModule(nn.Module):

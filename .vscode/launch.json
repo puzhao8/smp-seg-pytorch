@@ -5,24 +5,21 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "args": [
-                "--extensionDevelopmentPath=${workspaceFolder}"
-            ],
-            "name": "Launch Extension",
-            "outFiles": [
-                "${workspaceFolder}/out/**/*.js"
-            ],
-            "preLaunchTask": "npm",
-            "request": "launch",
-            "type": "pwa-extensionHost"
-        },
-
-        {
             "name": "Python: Current File",
             "type": "python",
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal"
+        },
+        {
+            "name": "Python: Current File",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONPATH": "/geoinfo_vol1/home/p/u/puzhao/miniforge3/envs/pytorch/bin/python"
+            },
         }
     ]
 }
