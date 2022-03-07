@@ -16,7 +16,7 @@ DATA:
     # DIR: /cephyr/NOBACKUP/groups/snic2021-7-104/wildfire-s1s2-dataset-ak-tiles
     # DIR: /cephyr/NOBACKUP/groups/snic2021-7-104/wildfire-s1s2-dataset-ca-tiles
 
-    SATELLITES: ['S1']
+    SATELLITES: ['S1','S2']
     PREPOST: ['pre','post']
     STACKING: True # stack bi-temporal data
 
@@ -28,16 +28,18 @@ DATA:
     INPUT_BANDS:
         ALOS: ['ND', 'VH', 'VV']
         S1: ['ND', 'VH', 'VV']
-        S2: ['B2', 'B3', 'B4', 'B8', 'B11', 'B12'] #['B4', 'B8', 'B12']
+        S2: ['B3','B8', 'B12'] #['B4', 'B8', 'B12']
         # S2: ['B3', 'B8', 'B12'] #['B4', 'B8', 'B12']
 
-    REF_MASK: poly
+    TRAIN_MASK: poly
+    TEST_MASK: poly
     TRAIN_RATIO: 0.9
+    AUGMENT: False
 
 MODEL:
     DEBUG: True
 
-    ARCH: SiamUnet_conc #Paddle_unet #FuseUNet #FuseUNet, UNet
+    ARCH: DualUnet_LF #Paddle_unet #FuseUNet #FuseUNet, UNet
     SHARE_ENCODER: True
 
     TOPO: [16, 32, 64, 128]

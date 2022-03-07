@@ -110,6 +110,81 @@ class SiamUnet_conc(nn.Module):
         # logit_list.append(logit)
         return logit_list
 
+
+class DualUnet_LF(nn.Module):
+    """
+    The Dual UNet with late fusion (LF).
+    Args:
+        num_classes (int): The unique number of target classes.
+        align_corners (bool): An argument of F.interpolate. It should be set to False when the output size of feature
+            is even, e.g. 1024x512, otherwise it is True, e.g. 769x769.  Default: False.
+        use_deconv (bool, optional): A bool value indicates whether using deconvolution in upsampling.
+            If False, use resize_bilinear. Default: False.
+        pretrained (str, optional): The path or url of pretrained model for fine tuning. Default: None.
+    """
+
+    def __init__(self,
+                 input_channels=6,
+                 num_classes=1,
+                #  topo=[64, 128, 256, 512],
+                #  topo=[32, 64, 128, 256],
+                 topo=[16, 32, 64, 128],
+                 align_corners=False,
+                 use_deconv=False,
+                 pretrained=None,
+                 share_encoder=True):
+        super().__init__()
+
+        self.share_encoder = share_encoder
+        self.encode1 = Encoder(input_channels, topo=topo)
+        if not self.share_encoder:
+            self.encode2 = Encoder(input_channels, topo=topo)
+        else:
+            self.encode2 = self.encode1
+
+        decoder_topo = topo[::-1]
+        # decoder_topo = [3*de_topo for de_topo in decoder_topo]
+
+        self.decode1 = Decoder(align_corners, use_deconv=use_deconv, topo=decoder_topo, multiplyer=2)
+        if not self.share_encoder:
+            self.decode2 = Decoder(align_corners, use_deconv=use_deconv, topo=decoder_topo, multiplyer=2)
+        else:
+            self.decode2 = self.decode1
+
+        self.cls = self.conv = nn.Conv2d(
+            in_channels=topo[0] * 2, # *3 only for SiamUnet_conc
+            out_channels=num_classes,
+            kernel_size=3,
+            stride=1,
+            padding=1)
+
+        # self.pretrained = pretrained
+        # self.init_weight()
+
+        print(f"Encoder TOPO: ", topo)
+        # print(f"Decoder TOPO: ", decoder_topo)
+
+    def forward(self, x):
+        ''' x1, x2 should come from different sensor, or different time '''
+        x1, x2 = x
+
+        logit_list = []
+
+        xc1, short_cuts1 = self.encode1(x1)
+        x1 = self.decode1(xc1, short_cuts1)
+
+        xc2, short_cuts2 = self.encode2(x2)
+        x2 = self.decode2(xc2, short_cuts2)
+
+        x = torch.cat([x1, x2], dim=1)
+        x = self.cls(x) # output
+        logit_list.append(x)
+
+        # logit = nn.LogSoftmax(dim=1)(x)
+        # logit_list.append(logit)
+        return logit_list
+
+
 class SiamUnet_diff(nn.Module):
     """
     The UNet implementation based on PaddlePaddle.
@@ -176,7 +251,7 @@ class SiamUnet_diff(nn.Module):
         for cut1, cut2 in zip(short_cuts1, short_cuts2):
             # stacked_feat = torch.cat((cut1, cut2), dim=1)
             diff_feat = torch.subtract(cut1, cut2)
-            # diff_feat = torch.abs(diff_feat)
+            diff_feat = torch.abs(diff_feat)
             short_cut.append(diff_feat)
 
         # print("--------------------")
@@ -334,8 +409,8 @@ if __name__ == "__main__":
     x1 = torch.from_numpy(x1).type(torch.FloatTensor)#.cuda().type(torch.cuda.FloatTensor)
     x2 = torch.from_numpy(x2).type(torch.FloatTensor)#.cuda().type(torch.cuda.FloatTensor)
 
-    myunet = SiamUnet_conc(input_channels=6, share_encoder=True)
-    myunet1 = SiamUnet_diff(input_channels=6, share_encoder=True)
+    myunet = DualUnet_LF(input_channels=6, share_encoder=True)
+    # myunet1 = DualUnet_LF(input_channels=6, share_encoder=True)
     # myunet.cuda()
 
     # print(myunet)

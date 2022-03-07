@@ -10,6 +10,7 @@ from pathlib import Path
 import tifffile as tiff
 import smp
 from easydict import EasyDict as edict
+from smp.base.modules import Activation
 
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap, LinearSegmentedColormap
@@ -35,8 +36,8 @@ def image_padding(img, patchsize):
     return img_pad
 
 def get_band_index_dict(cfg):
-    ALL_BANDS = cfg.data.ALL_BANDS
-    INPUT_BANDS = cfg.data.INPUT_BANDS
+    ALL_BANDS = cfg.DATA.ALL_BANDS
+    INPUT_BANDS = cfg.DATA.INPUT_BANDS
 
     def get_band_index(sat):
         all_bands = list(ALL_BANDS[sat])
@@ -55,16 +56,15 @@ def get_band_index_dict(cfg):
 
 def inference(model, test_dir, test_id, cfg):
 
-    patchsize = cfg.eval.patchsize
-    NUM_CLASS = len(list(cfg.data.CLASSES))
+    patchsize = cfg.EVAL.PATCHSIZE
+    NUM_CLASS = cfg.MODEL.NUM_CLASSES
     # model.cpu()
     model.to("cuda")
 
     input_tensors = []
-    for sat in cfg.data.satellites:
+    for sat in cfg.DATA.SATELLITES:
         
         post_url = test_dir / sat / "post" / f"{test_id}.tif"
-        orbKey = test_id.split("_")[-1]
 
         post_image = tiff.imread(post_url).transpose(2,0,1) # C*H*W
         post_image = np.nan_to_num(post_image, 0)
@@ -78,10 +78,11 @@ def inference(model, test_dir, test_id, cfg):
         # img_preprocessed = self.preprocessing_fn(img_pad)
         post_image_tensor = torch.from_numpy(post_image_pad).unsqueeze(0) # n * C * H * W
         
-        if 'pre' in cfg.data.prepost:
+        if 'pre' in cfg.DATA.PREPOST:
             pre_folder = test_dir / sat / "pre"
             # pre_url = pre_folder / os.listdir(pre_folder)[0]
-            pre_url = glob.glob(f"{str(pre_folder)}/*{orbKey}.tif")[0]
+            query = test_id.split("_")[-1]
+            pre_url = glob.glob(str(pre_folder / f"*_{query}.tif"))[0]
             print("pre_image: ", os.path.split(pre_url)[-1])
 
             pre_image = tiff.imread(pre_url).transpose(2,0,1)
@@ -101,7 +102,7 @@ def inference(model, test_dir, test_id, cfg):
     C, H, W = post_image.shape
     _, _, Height, Width = input_tensors[0][0].shape
     pred_mask_pad = np.zeros((Height, Width))
-    prob_mask_pad = np.zeros((NUM_CLASS, Height, Width))
+    # prob_mask_pad = np.zeros((NUM_CLASS, Height, Width))
 
     input_patchsize = 2 * patchsize
     padSize = int(patchsize/2) 
@@ -113,10 +114,10 @@ def inference(model, test_dir, test_id, cfg):
             input_patchs = []
             for sat_tensor in input_tensors:
                 post_patch = (sat_tensor[1][..., i:i+input_patchsize, j:j+input_patchsize]).type(torch.cuda.FloatTensor)
-                if 'pre' in cfg.data.prepost: 
+                if 'pre' in cfg.DATA.PREPOST: 
                     pre_patch = (sat_tensor[0][..., i:i+input_patchsize, j:j+input_patchsize]).type(torch.cuda.FloatTensor)
                     
-                    if cfg.data.stacking: 
+                    if cfg.DATA.STACKING: 
                         inputPatch = torch.cat([pre_patch, post_patch], dim=1) # stacked inputs
                         input_patchs.append(inputPatch)
                     else:
@@ -124,23 +125,45 @@ def inference(model, test_dir, test_id, cfg):
                 else:
                     input_patchs.append(post_patch)
 
-            ''' ------------> apply model <--------------- '''
-            if 'FuseUNet' in cfg.model.ARCH:
-                predPatch, _ = model.forward(input_patchs)
-            else:
-                predPatch = model.forward(inputPatch)
+            if 'distill_unet' == cfg.MODEL.ARCH:
+                if cfg.MODEL.DISTILL:
+                    out = model.forward(input_patchs[:1])[-1] # ONLY USE S1 sensor in distill mode.
+                else:
+                    out = model.forward(input_patchs)[-1] # USE all data in pretrain mode.
+
+            elif 'UNet_resnet' in cfg.MODEL.ARCH:
+                out = model.forward(torch.cat(input_patchs, dim=1))
+
+            # elif 'SiamResUNet' in cfg.MODEL.ARCH:
+            #     out, decoder_out = model.forward(input_patchs, False)
+
+            # elif 'cdc_unet' in cfg.MODEL.ARCH:
+            #     out, decoder_out = model.forward(input_patchs, False)
+            
+            else: # UNet, SiamUnet
+                # NEW: input_patchs should be a list or tuple, the last one is the wanted output.
+                out = model.forward(input_patchs)[-1] 
+
             ''' ------------------------------------------ '''
+            activation = Activation(name=cfg.MODEL.ACTIVATION)
+            predPatch = activation(out) #NCWH for sigmoid, NWH for argmax, N=1, C=1
+            predPatch = predPatch.squeeze() #1x1xWxH or 1xWxH -> WxH
 
-            predPatch = predPatch.squeeze().cpu().detach().numpy()#.round()
-            predLabel = np.argmax(predPatch, axis=0).squeeze()
+            predPatch = predPatch.cpu().detach().numpy()
+            if 'sigmoid' == cfg.MODEL.ACTIVATION:
+                predLabel = np.round(predPatch) # binarized with 0.5
+            else: # 'argmax'
+                predLabel = predPatch
+            
+            ''' save predicted tile '''
+            # prob_mask_pad[i+padSize:i+padSize+patchsize, j+padSize:j+padSize+patchsize] = predPatch[padSize:padSize+patchsize, padSize:padSize+patchsize]
+            pred_mask_pad[i+padSize:i+padSize+patchsize, j+padSize:j+padSize+patchsize] = predLabel[padSize:padSize+patchsize, padSize:padSize+patchsize]
 
-            pred_mask_pad[i+padSize:i+padSize+patchsize, j+padSize:j+padSize+patchsize] = predLabel[padSize:padSize+patchsize, padSize:padSize+patchsize]  # need to modify
-            prob_mask_pad[:, i+padSize:i+padSize+patchsize, j+padSize:j+padSize+patchsize] = predPatch[:, padSize:padSize+patchsize, padSize:padSize+patchsize]  # need to modify
-
+    ''' clip back into original shape '''    
+    # prob_mask = prob_mask_pad[padSize:padSize+H, padSize:padSize+W] # clip back to original shape    
     pred_mask = pred_mask_pad[padSize:padSize+H, padSize:padSize+W] # clip back to original shape
-    prod_mask = prob_mask_pad[:, padSize:padSize+H, padSize:padSize+W] # clip back to original shape
 
-    return pred_mask, prod_mask
+    return pred_mask
 
 def gen_errMap(grouthTruth, preMap, save_url=False):
     errMap = np.zeros(preMap.shape)
@@ -169,7 +192,7 @@ def gen_errMap(grouthTruth, preMap, save_url=False):
 def apply_model_on_event(model, test_id, output_dir, cfg):
     output_dir = Path(output_dir)
     output_dir.mkdir(exist_ok=True)
-    data_dir = Path(cfg.data.dir) #/ "test_images"
+    data_dir = Path(cfg.DATA.DIR) #/ "test_images"
 
     # orbKeyLen = len(test_id.split("_")[-1]) + 1 
     # event = test_id[:-orbKeyLen]
@@ -178,10 +201,10 @@ def apply_model_on_event(model, test_id, output_dir, cfg):
 
     print(f"------------------> {test_id} <-------------------")
 
-    predMask, probMask = inference(model, data_dir, event, cfg)
+    predMask = inference(model, data_dir, event, cfg)
 
     print(f"predMask shape: {predMask.shape}, unique: {np.unique(predMask)}")
-    print(f"probMask: [{probMask.min()}, {probMask.max()}]")
+    # print(f"probMask: [{probMask.min()}, {probMask.max()}]")
 
     # # mtbs_palette =  ["000000", "006400","7fffd4","ffff00","ff0000","7fff00"]
     # # [0,100/255,0]
@@ -212,7 +235,7 @@ def evaluate_model(cfg, model_url, output_dir):
     #     split_dict = json.load(json_file)
     # test_id_list = split_dict['test']['sarname']
 
-    test_id_list = [filename[:-4] for filename in os.listdir(Path(cfg.data.dir) / "S1" / "post")]
+    test_id_list = [filename[:-4] for filename in os.listdir(Path(cfg.DATA.DIR) / "S1" / "post")]
 
     model = torch.load(model_url)
     # output_dir = Path(SegModel.project_dir) / 'outputs'
@@ -236,7 +259,7 @@ def run_app(cfg : DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
 
     # wandb.init(config=cfg, project=cfg.project.name, name=cfg.experiment.name)
-    wandb.init(config=cfg, project=cfg.project.name, entity=cfg.project.entity, name=cfg.experiment.name)
+    wandb.init(config=cfg, project=cfg.PROJECT.NAME, entity=cfg.PROJECT.ENTITY, name=cfg.EXP.NAME)
 
     # project_dir = Path(hydra.utils.get_original_cwd())
     #########################################################################
@@ -254,9 +277,9 @@ def run_app(cfg : DictConfig) -> None:
     # for test_id in test_id_list:
     #     apply_model_on_event(model, test_id, output_dir, satellites=['S1', 'S2'])
 
-    model_url = "/cephyr/NOBACKUP/groups/snic2021-7-104/puzhao-snic-500G/smp-seg-pytorch/outputs/run_s1s2_UNet_resnet18_['S1']_20211022T155051/model.pth"
+    model_url = "/home/p/u/puzhao/smp-seg-pytorch/outputs-igarss/run_s1s2_UNet_['S1']_EF_20220116T212807/model.pth"
     # output_dir = Path("/cephyr/NOBACKUP/groups/snic2021-7-104/puzhao-snic-500G/smp-seg-pytorch/outputs") / "errMap"
-    output_dir = Path("/cephyr/NOBACKUP/groups/snic2021-7-104/puzhao-snic-500G/smp-seg-pytorch") / cfg.experiment.output
+    output_dir = Path("/home/p/u/puzhao/wildfire-progression-dataset/CA_2021_Kamloops/outputs/pred_small")
     evaluate_model(cfg, model_url, output_dir)
     
     #########################################################################
@@ -272,3 +295,5 @@ if __name__ == "__main__":
 
     # for test_id in test_id_list:
     #     apply_model_on_event(model, test_id, output_dir, satellites=['S1', 'S2'])
+
+    # scp -r puzhao@alvis1.c3se.chalmers.se:/cephyr/NOBACKUP/groups/snic2021-7-104/puzhao-snic-500G/CA_2021_Kamloops/S1/pre pre/

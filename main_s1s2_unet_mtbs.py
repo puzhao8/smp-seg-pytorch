@@ -43,7 +43,7 @@ import wandb
 # IoU/Jaccard score - https://en.wikipedia.org/wiki/Jaccard_index
 # diceLoss = smp.utils.losses.DiceLoss(eps=1)
 from models.loss_ref import soft_dice_loss, soft_dice_loss_balanced, jaccard_like_loss, jaccard_like_balanced_loss
-
+from models.lr_schedule import get_cosine_schedule_with_warmup, PolynomialLRDecay
 AverageValueMeter =  smp.utils.train.AverageValueMeter
 
 # Augmentations
@@ -51,9 +51,8 @@ from dataset.augument import get_training_augmentation, \
     get_validation_augmentation, get_preprocessing
 
 from torch.utils.data import DataLoader
-from dataset.wildfire import S1S2 as Dataset # ------------------------------------------------------- Dataset
-
-from models.lr_schedule import get_cosine_schedule_with_warmup, PolynomialLRDecay
+# from dataset.wildfire import S1S2 as Dataset # ------------------------------------------------------- Dataset
+from dataset.wildfire import MTBS as Dataset # ------------------------------------------------------- Dataset
 
 
 def format_logs(logs):
@@ -73,9 +72,10 @@ def loss_fun(CFG, DEVICE='cuda'):
         criterion = smp.utils.losses.DiceLoss(eps=1, activation=CFG.MODEL.ACTIVATION)
 
     elif CFG.MODEL.LOSS_TYPE == 'CrossEntropyLoss':
-        balance_weight = [CFG.MODEL.NEGATIVE_WEIGHT, CFG.MODEL.POSITIVE_WEIGHT]
+        balance_weight = [class_weight for class_weight in CFG.MODEL.CLASS_WEIGHTS]
         balance_weight = torch.tensor(balance_weight).float().to(DEVICE)
-        criterion = nn.CrossEntropyLoss(weight = balance_weight)
+        # criterion = nn.CrossEntropyLoss(weight = balance_weight, ignore_index=-1)
+        criterion = nn.CrossEntropyLoss(ignore_index=-1)
         
     elif CFG.MODEL.LOSS_TYPE == 'SoftDiceLoss':
         criterion = soft_dice_loss 
@@ -108,9 +108,9 @@ class SegModel(object):
         self.RUN_DIR = self.PROJECT_DIR / self.cfg.EXP.OUTPUT
         self.MODEL_URL = str(self.RUN_DIR / "model.pth")
 
-        # if CFG.MODEL.ENCODER is not None:
+        # if self.cfg.MODEL.ENCODER is not None:
         #     self.preprocessing_fn = \
-        #         smp.encoders.get_preprocessing_fn(CFG.MODEL.ENCODER, CFG.MODEL.ENCODER_WEIGHTS)
+        #         smp.encoders.get_preprocessing_fn(self.cfg.MODEL.ENCODER, self.cfg.MODEL.ENCODER_WEIGHTS)
 
         self.metrics = [smp.utils.metrics.IoU(threshold=0.5, activation=None),
                         smp.utils.metrics.Fscore(activation=None)
@@ -119,18 +119,23 @@ class SegModel(object):
         '''--------------> need to improve <-----------------'''
         # specify data folder
         self.TRAIN_DIR = Path(self.cfg.DATA.DIR) / 'train'
-        self.VALID_DIR = Path(self.cfg.DATA.DIR) / 'test'
+        self.VALID_DIR = Path(self.cfg.DATA.DIR) / 'train'
         '''--------------------------------------------------'''
     
     def get_dataloaders(self) -> dict:
 
-        if self.cfg.MODEL.NUM_CLASSES == 1:
-            classes = ['burned']
-        elif self.cfg.MODEL.NUM_CLASSES == 2:
-            classes = ['unburn', 'burned']
-        elif self.cfg.MODEL.NUM_CLASSES > 2:
-            print(" ONLY ALLOW ONE or TWO CLASSES SO FAR !!!")
-            pass
+        # if self.cfg.MODEL.NUM_CLASSES == 1:
+        #     classes = ['burned']
+        # elif self.cfg.MODEL.NUM_CLASSES == 2:
+        #     classes = ['unburn', 'burned']
+        # elif self.cfg.MODEL.NUM_CLASSES > 2:
+        #     classes = self.cfg.MODEL.CLASS_NAMES
+        #     # print(" ONLY ALLOW ONE or TWO CLASSES SO FAR !!!")
+        # else:
+        #     pass
+        
+        classes = self.cfg.MODEL.CLASS_NAMES
+        print("classes: ", classes)
 
         """ Data Preparation """
         train_dataset = Dataset(
@@ -154,9 +159,9 @@ class SegModel(object):
         valid_size = len(train_dataset) - train_size
         train_set, val_set = torch.utils.data.random_split(train_dataset, [train_size, valid_size], generator=generator)
 
-        train_loader = DataLoader(train_set, batch_size=self.cfg.MODEL.BATCH_SIZE, shuffle=True, num_workers=4, generator=generator)
-        valid_loader = DataLoader(val_set, batch_size=self.cfg.MODEL.BATCH_SIZE, shuffle=True, num_workers=4, generator=generator)
-        test_loader = DataLoader(valid_dataset, batch_size=self.cfg.MODEL.BATCH_SIZE, shuffle=True, num_workers=4, generator=generator)
+        train_loader = DataLoader(train_set, batch_size=self.cfg.MODEL.BATCH_SIZE, shuffle=True, num_workers=self.cfg.DATA.NUM_WORKERS, generator=generator)
+        valid_loader = DataLoader(val_set, batch_size=self.cfg.MODEL.BATCH_SIZE, shuffle=True, num_workers=self.cfg.DATA.NUM_WORKERS, generator=generator)
+        test_loader = DataLoader(valid_dataset, batch_size=self.cfg.MODEL.BATCH_SIZE, shuffle=True, num_workers=self.cfg.DATA.NUM_WORKERS, generator=generator)
 
 # means = []
 # stds = []
@@ -230,8 +235,8 @@ class SegModel(object):
             valid_logs = self.valid_logs
             
             # do something (save model, change lr, etc.)
-            if valid_logs['iou_score'] > max_score:
-                max_score = valid_logs['iou_score']
+            if valid_logs['class1_iou_score'] > max_score:
+                max_score = valid_logs['class1_iou_score']
 
                 if (1 == epoch) or (0 == (epoch % self.cfg.MODEL.SAVE_INTERVAL)):
                     torch.save(self.model, self.MODEL_URL)
@@ -245,7 +250,7 @@ class SegModel(object):
     def train_one_epoch(self, epoch):
     
         # wandb.
-        for phase in ['train', 'valid', 'test']:
+        for phase in ['train', 'valid']: # 'test' --------------------
             if phase == 'train':
                 self.model.train()
             else:
@@ -266,32 +271,61 @@ class SegModel(object):
     def step(self, phase) -> dict:
         logs = {}
         loss_meter = AverageValueMeter()
-        metrics_meters = {metric.__name__: AverageValueMeter() for metric in self.metrics}
-
-        # if ('Train' in phase) and (self.cfg.useDataWoCAug):
-        #     dataLoader_woCAug = iter(self.dataloaders['Train_woCAug'])
-
+        loss_seg_meter = AverageValueMeter()
+        loss_reg_meter = AverageValueMeter()
+        
+        metrics_meters = {f"{metric.__name__}_class{cls}": AverageValueMeter() for metric in self.metrics for cls in range(0, max(2, self.cfg.MODEL.NUM_CLASSES))}
         with tqdm(iter(self.dataloaders[phase]), desc=phase, file=sys.stdout, disable=not self.cfg.MODEL.VERBOSE) as iterator:
             for i, (x, y) in enumerate(iterator):
                 self.optimizer.zero_grad()
 
-                ''' move data to GPU '''
-                input = []
-                for x_ in x: input.append(x_.to(self.DEVICE))
-                y = y.to(self.DEVICE)
-                # print(len(input))
+                """ for data augmentation """
+                if self.cfg.DATA.AUGMENT:
+                    cy = y.shape[1] // 2
+                    if 'train' == phase:
+                        # Bx2CxHxW -> 2BxCxHxW
+                        input = [torch.cat((x_[:,:(x_.shape[1]//2),], x_[:,(x_.shape[1]//2):,]), dim=0).to(self.DEVICE) for x_ in x]
+                        y = torch.cat((y[:,:cy,], y[:,cy:,]), dim=0).to(self.DEVICE) # Bx2CxHxW -> 2BxCxHxW
+
+                    elif 'valid' == phase: # remove x_aug for valid
+                        input = [x_[:,:(x_.shape[1]//2),].to(self.DEVICE) for x_ in x] # Bx2CxHxW -> BxCxHxW
+                        y = y[:,:cy,].to(self.DEVICE)
+                    else:
+                        input = [x_.to(self.DEVICE) for x_ in x] # BxCxHxW
+                        y = y.to(self.DEVICE)
+
+                else:
+                    ''' move data to GPU '''
+                    input = [x_.to(self.DEVICE) for x_ in x] # BxCxHxW
+                    y = y.to(self.DEVICE)
 
                 ''' do prediction '''
+                loss_reg = 0
                 if 'UNet_resnet' in self.cfg.MODEL.ARCH: 
                     input = input[0]
                     out = self.model.forward(input)
+                elif 'UNet_dualHeads' in self.cfg.MODEL.ARCH:
+                    reg_out, out = self.model.forward(input) #NCHW
+                    reg_act = (self.cfg.MODEL.NUM_CLASSES - 1) * torch.sigmoid(reg_out)
+
+                    # add regression loss
+                    y_mask = torch.tensor((y>=1)).float()
+                    loss_reg = 10 * nn.MSELoss()(y_mask * reg_act, y_mask * y)
+
                 else:
-                    out = self.model.forward(input)[-1]
-                y_pred = self.activation(out) # If use this, set IoU/F1 metrics activation=None
+                    out = self.model.forward(input)[-1] #NCHW
+
+                y_pred = torch.argmax(self.activation(out), dim=1) # If use this, set IoU/F1 metrics activation=None
 
                 ''' compute loss '''
-                loss_ = self.criterion(out, y)
+                # segmentation loss
+                y = y.squeeze()
+                loss_seg = self.criterion(out, torch.tensor((y>=1)).long())
+                loss_ =  loss_seg + loss_reg
 
+                # combine burned area and burn severity maps
+                y_pred[y_pred==1] = torch.round(reg_act).squeeze()[y_pred==1].long()
+                
                 ''' Back Propergation (BP) '''
                 if phase == 'train':
                     loss_.backward()
@@ -308,22 +342,32 @@ class SegModel(object):
                     if self.USE_LR_SCHEDULER:
                         self.lr_scheduler.step()
 
-                # if mask is in one-hot: NCWH, C=NUM_CLASSES (C>1), and do nothing if C=1
-                if y.shape[1] >= 2: 
-                    y = self.activation(y)
+                # # if mask is in one-hot: NCWH, C=NUM_CLASSES (C>1), and do nothing if C=1
+                # if y.shape[1] >= 2: 
+                #     y = self.activation(y)
 
                 ''' update loss and metrics logs '''
                 # update loss logs
-                loss_value = loss_.cpu().detach().numpy()
-                loss_meter.add(loss_value)
+                loss_meter.add(loss_.cpu().detach().numpy())
+                loss_seg_meter.add(loss_seg.cpu().detach().numpy())
+                loss_reg_meter.add(loss_reg.cpu().detach().numpy())
+
                 # loss_logs = {criterion.__name__: loss_meter.mean}
-                loss_logs = {'total_loss': loss_meter.mean}
+                loss_logs = {
+                        'total_loss': loss_meter.mean,
+                        'reg_loss': loss_reg_meter.mean,
+                        'seg_loss': loss_seg_meter.mean
+                    }
                 logs.update(loss_logs)
 
                 # update metrics logs
                 for metric_fn in self.metrics:
-                    metric_value = metric_fn(y_pred, y).cpu().detach().numpy()
-                    metrics_meters[metric_fn.__name__].add(metric_value)
+                    for cls in range(0, max(2, self.cfg.MODEL.NUM_CLASSES)):
+                        # metric_value = metric_fn(y_pred[:,cls,...], y[:,cls,...]).cpu().detach().numpy()
+                        cls_pred = (y_pred==cls).type(torch.FloatTensor)
+                        cls_gts = (y==cls).type(torch.FloatTensor)
+                        metric_value = metric_fn(cls_pred, cls_gts).cpu().detach().numpy()
+                        metrics_meters[f"{metric_fn.__name__}_class{cls}"].add(metric_value)
 
                 metrics_logs = {k: v.mean for k, v in metrics_meters.items()}
                 logs.update(metrics_logs)
@@ -335,8 +379,6 @@ class SegModel(object):
 
         return logs
 ##############################################################
-
-
 def set_random_seed(seed, deterministic=False):
     """Set random seed.
 
@@ -356,12 +398,15 @@ def set_random_seed(seed, deterministic=False):
         torch.backends.cudnn.benchmark = False
 
 
-@hydra.main(config_path="./config", config_name="unet")
+@hydra.main(config_path="./config", config_name="mtbs")
 def run_app(cfg : DictConfig) -> None:
 
     ''' set randome seed '''
-    os.environ['HYDRA_FULL_ERROR'] = str(1)
+    # os.environ['CUDA_VISIBLE_DEVICES'] = '7'
+    os.environ['HYDRA_FULL_ERROR'] = '1'
     os.environ['PYTHONHASHSEED'] = str(cfg.RAND.SEED) #cfg.RAND.SEED
+    # os.environ['CUDA_LAUNCH_BLOCKING'] = str(1) # added on 2022-02-27
+
     if cfg.RAND.DETERMIN:
         os.environ['CUBLAS_WORKSPACE_CONFIG']=":4096:8" #https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility
         torch.use_deterministic_algorithms(True)
@@ -372,11 +417,11 @@ def run_app(cfg : DictConfig) -> None:
     from prettyprinter import pprint
     
     cfg_dict = OmegaConf.to_container(cfg, resolve=True)
-    cfg_flat = pd.json_normalize(cfg_dict, sep='.').to_dict(orient='records')[0]
+    cfg_flat = pd.json_normalize(cfg_dict, sep='_').to_dict(orient='records')[0]
 
     # cfg.MODEL.DEBUG = False
     # if not cfg.MODEL.DEBUG:
-    wandb.init(config=cfg_flat, project=cfg.PROJECT.NAME, entity=cfg.PROJECT.ENTITY, name=cfg.EXP.NAME)
+    wandb.init(config=cfg_flat, project='MTBS', entity=cfg.PROJECT.ENTITY, name=cfg.EXP.NAME)
     pprint(cfg_flat)
 
     ''' train '''
@@ -384,15 +429,15 @@ def run_app(cfg : DictConfig) -> None:
     mySegModel = SegModel(cfg)
     mySegModel.run()
 
-    ''' inference '''
-    from s1s2_evaluator import evaluate_model
-    evaluate_model(cfg, mySegModel.MODEL_URL, mySegModel.RUN_DIR / "errMap")
+    # ''' inference '''
+    # from s1s2_evaluator import evaluate_model
+    # evaluate_model(cfg, mySegModel.MODEL_URL, mySegModel.RUN_DIR / "errMap")
 
-    ''' compute IoU and F1 for all events '''
-    from utils.iou4all import compute_IoU_F1
-    compute_IoU_F1(phase="test_images", 
-                    result_dir=mySegModel.RUN_DIR / "errMap", 
-                    dataset_dir=cfg.DATA.DIR)
+    # ''' compute IoU and F1 for all events '''
+    # from utils.iou4all import compute_IoU_F1
+    # compute_IoU_F1(phase="test_images", 
+    #                 result_dir=mySegModel.RUN_DIR / "errMap", 
+    #                 dataset_dir=cfg.DATA.DIR)
     
     # if not cfg.MODEL.DEBUG:
     wandb.finish()

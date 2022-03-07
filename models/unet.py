@@ -85,6 +85,80 @@ class UNet(nn.Module):
         #     print(shortcut.shape)
 
         x = self.decode(xc, short_cuts)
+
+        x = self.cls(x) # output
+        logit_list.append(x)
+
+        return logit_list
+
+
+class UNet_dualHeads(nn.Module):
+    """
+    The UNet implementation based on PaddlePaddle.
+
+    The original article refers to
+    Olaf Ronneberger, et, al. "U-Net: Convolutional Networks for Biomedical Image Segmentation"
+    (https://arxiv.org/abs/1505.04597).
+
+    Args:
+        num_classes (int): The unique number of target classes.
+        align_corners (bool): An argument of F.interpolate. It should be set to False when the output size of feature
+            is even, e.g. 1024x512, otherwise it is True, e.g. 769x769.  Default: False.
+        use_deconv (bool, optional): A bool value indicates whether using deconvolution in upsampling.
+            If False, use resize_bilinear. Default: False.
+        pretrained (str, optional): The path or url of pretrained model for fine tuning. Default: None.
+    """
+
+    def __init__(self,
+            input_channels=6,
+            num_classes=2,
+            # topo=[64, 128, 256, 512],
+            topo=[16, 32, 64, 128],
+            # topo=[16, 32, 64],
+            align_corners=False,
+            use_deconv=False, # False
+            pretrained=None):
+        super().__init__()
+
+        self.encode = Encoder(input_channels, topo=topo)
+        decoder_topo = topo[::-1]
+        self.decode = Decoder(align_corners, use_deconv=use_deconv, topo=decoder_topo)
+        
+        self.cls = nn.Conv2d(
+            in_channels=topo[0],
+            out_channels=2, # burned areas
+            kernel_size=3,
+            stride=1,
+            padding=1)
+
+        self.reg_head = nn.Conv2d(
+            in_channels=topo[0],
+            out_channels=1,
+            kernel_size=3,
+            stride=1,
+            padding=1)
+
+        # self.sigmoid = nn.Sigmoid()
+        # self.softmax = nn.Softmax(dim=1)
+
+        # self.pretrained = pretrained
+        # self.init_weight()
+
+    def forward(self, x):
+        ''' x should be a list or tuple '''
+        x = torch.cat(x, dim=1) # concat all input tensors
+
+        logit_list = []
+        xc, short_cuts = self.encode(x)
+        # logit_list.append(xc) # most center features
+
+        # for shortcut in short_cuts:
+        #     print(shortcut.shape)
+
+        x = self.decode(xc, short_cuts)
+        reg_out = self.reg_head(x)
+        logit_list.append(reg_out)
+        
         x = self.cls(x) # output
         logit_list.append(x)
 
@@ -240,14 +314,14 @@ if __name__ == "__main__":
 
     torch.use_deterministic_algorithms(True)
 
-    x1 = np.random.rand(10,12,256,256)
+    x1 = np.random.rand(10,3,256,256)
     # x2 = np.random.rand(10,3,256,256)
-    x1 = torch.from_numpy(x1).type(torch.FloatTensor).cuda().type(torch.cuda.FloatTensor)
+    x1 = torch.from_numpy(x1).type(torch.FloatTensor)#.cuda().type(torch.cuda.FloatTensor)
     # x2 = torch.from_numpy(x2).type(torch.FloatTensor)#.cuda().type(torch.cuda.FloatTensor)
 
     myunet = UNet(input_channels=x1.shape[1])
     # myunet.cuda()
 
     print(myunet)
-    # print(myunet.forward([x1])[-1].shape)
+    print(myunet.forward([x1])[-1].shape)
     # summary(myunet, (3,256,256))

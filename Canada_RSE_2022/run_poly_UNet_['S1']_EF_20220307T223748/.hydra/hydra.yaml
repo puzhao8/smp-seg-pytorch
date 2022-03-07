@@ -1,0 +1,165 @@
+hydra:
+  run:
+    dir: ${EXP.OUTPUT}
+  sweep:
+    dir: multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: ${hydra.job.num}
+  launcher:
+    _target_: hydra._internal.core_plugins.basic_launcher.BasicLauncher
+  sweeper:
+    _target_: hydra._internal.core_plugins.basic_sweeper.BasicSweeper
+    max_batch_size: null
+  help:
+    app_name: ${hydra.job.name}
+    header: '${hydra.help.app_name} is powered by Hydra.
+
+      '
+    footer: 'Powered by Hydra (https://hydra.cc)
+
+      Use --hydra-help to view Hydra specific help
+
+      '
+    template: '${hydra.help.header}
+
+      == Configuration groups ==
+
+      Compose your configuration from those groups (group=option)
+
+
+      $APP_CONFIG_GROUPS
+
+
+      == Config ==
+
+      Override anything in the config (foo.bar=value)
+
+
+      $CONFIG
+
+
+      ${hydra.help.footer}
+
+      '
+  hydra_help:
+    template: 'Hydra (${hydra.runtime.version})
+
+      See https://hydra.cc for more info.
+
+
+      == Flags ==
+
+      $FLAGS_HELP
+
+
+      == Configuration groups ==
+
+      Compose your configuration from those groups (For example, append hydra/job_logging=disabled
+      to command line)
+
+
+      $HYDRA_CONFIG_GROUPS
+
+
+      Use ''--cfg hydra'' to Show the Hydra config.
+
+      '
+    hydra_help: ???
+  hydra_logging:
+    version: 1
+    formatters:
+      simple:
+        format: '[%(asctime)s][HYDRA] %(message)s'
+    handlers:
+      console:
+        class: logging.StreamHandler
+        formatter: simple
+        stream: ext://sys.stdout
+    root:
+      level: INFO
+      handlers:
+      - console
+    loggers:
+      logging_example:
+        level: DEBUG
+    disable_existing_loggers: false
+  job_logging:
+    version: 1
+    formatters:
+      simple:
+        format: '[%(asctime)s][%(name)s][%(levelname)s] - %(message)s'
+    handlers:
+      console:
+        class: logging.StreamHandler
+        formatter: simple
+        stream: ext://sys.stdout
+      file:
+        class: logging.FileHandler
+        formatter: simple
+        filename: ${hydra.job.name}.log
+    root:
+      level: INFO
+      handlers:
+      - console
+      - file
+    disable_existing_loggers: false
+  env: {}
+  searchpath: []
+  callbacks: {}
+  output_subdir: .hydra
+  overrides:
+    hydra: []
+    task:
+    - RAND.SEED=0
+    - RAND.DETERMIN=False
+    - DATA.TRAIN_MASK=poly
+    - DATA.SATELLITES=[S1]
+    - MODEL.ARCH=UNet
+    - MODEL.ENCODER=resnet18
+    - MODEL.ENCODER_WEIGHTS=imagenet
+    - MODEL.USE_DECONV=False
+    - MODEL.WEIGHT_DECAY=0.01
+    - MODEL.NUM_CLASSES=2
+    - MODEL.LOSS_TYPE=CrossEntropyLoss
+    - MODEL.LR_SCHEDULER=cosine
+    - MODEL.ACTIVATION=sigmoid
+    - MODEL.BATCH_SIZE=16
+    - MODEL.MAX_EPOCH=100
+    - EXP.FOLDER=Canada_RSE_2022
+    - EXP.NOTE=EF
+  job:
+    name: main_s1s2_unet
+    override_dirname: DATA.SATELLITES=[S1],DATA.TRAIN_MASK=poly,EXP.FOLDER=Canada_RSE_2022,EXP.NOTE=EF,MODEL.ACTIVATION=sigmoid,MODEL.ARCH=UNet,MODEL.BATCH_SIZE=16,MODEL.ENCODER=resnet18,MODEL.ENCODER_WEIGHTS=imagenet,MODEL.LOSS_TYPE=CrossEntropyLoss,MODEL.LR_SCHEDULER=cosine,MODEL.MAX_EPOCH=100,MODEL.NUM_CLASSES=2,MODEL.USE_DECONV=False,MODEL.WEIGHT_DECAY=0.01,RAND.DETERMIN=False,RAND.SEED=0
+    id: ???
+    num: ???
+    config_name: unet.yaml
+    env_set: {}
+    env_copy: []
+    config:
+      override_dirname:
+        kv_sep: '='
+        item_sep: ','
+        exclude_keys: []
+  runtime:
+    version: 1.1.1
+    cwd: /geoinfo_vol1/home/p/u/puzhao/smp-seg-pytorch
+    config_sources:
+    - path: hydra.conf
+      schema: pkg
+      provider: hydra
+    - path: /geoinfo_vol1/home/p/u/puzhao/smp-seg-pytorch/config
+      schema: file
+      provider: main
+    - path: ''
+      schema: structured
+      provider: schema
+    choices:
+      hydra/env: default
+      hydra/callbacks: null
+      hydra/job_logging: default
+      hydra/hydra_logging: default
+      hydra/hydra_help: default
+      hydra/help: default
+      hydra/sweeper: basic
+      hydra/launcher: basic
+      hydra/output: default
+  verbose: false

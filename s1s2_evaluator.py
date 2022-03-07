@@ -64,7 +64,7 @@ def inference(model, test_dir, test_id, cfg):
         model.to("cuda")
 
     ''' read input data '''
-    input_tensors = []
+    input_tensors = []  # [(S1_pre, S1_post), (S2_pre, S2_post), ...]
     for sat in cfg.DATA.SATELLITES:
         
         post_url = test_dir / sat / "post" / f"{test_id}.tif"
@@ -90,10 +90,10 @@ def inference(model, test_dir, test_id, cfg):
             input_tensors.append((pre_image_tensor, post_image_tensor))
 
         else:
-            input_tensors.append(post_image_tensor)
+            input_tensors.append((post_image_tensor, ))
 
     C, H, W = post_image.shape
-    _, _, Height, Width = input_tensors[0][0].shape
+    _, _, Height, Width = post_image_tensor.shape
     pred_mask_pad = np.zeros((Height, Width)) #HxW
     prob_mask_pad = np.zeros((Height, Width)) #HxW
 
@@ -107,7 +107,7 @@ def inference(model, test_dir, test_id, cfg):
             ''' ------------> tile input data <---------- '''
             input_patchs = []
             for sat_tensor in input_tensors:
-                post_patch = (sat_tensor[1][..., i:i+input_patchsize, j:j+input_patchsize]).type(torch.cuda.FloatTensor)
+                post_patch = (sat_tensor[-1][..., i:i+input_patchsize, j:j+input_patchsize]).type(torch.cuda.FloatTensor)
                 if 'pre' in cfg.DATA.PREPOST: 
                     pre_patch = (sat_tensor[0][..., i:i+input_patchsize, j:j+input_patchsize]).type(torch.cuda.FloatTensor)
                     
@@ -147,23 +147,20 @@ def inference(model, test_dir, test_id, cfg):
             ''' ------------------------------------------ '''
             activation = Activation(name=cfg.MODEL.ACTIVATION)
             predPatch = activation(out) #NCWH for sigmoid, NWH for argmax, N=1, C=1
-            predPatch = predPatch.squeeze() #1x1xWxH or 1xWxH -> WxH
-
-            predPatch = predPatch.cpu().detach().numpy()
             if 'sigmoid' == cfg.MODEL.ACTIVATION:
-                predLabel = np.round(predPatch) # binarized with 0.5
+                predLabel = np.round(predPatch.squeeze().cpu().detach().numpy()) # binarized with 0.5
             else: # 'argmax'
-                predLabel = predPatch
+                predLabel = torch.argmax(predPatch, dim=1)
+                predLabel = predLabel.squeeze().cpu().detach().numpy()
             
             ''' save predicted tile '''
-            prob_mask_pad[i+padSize:i+padSize+patchsize, j+padSize:j+padSize+patchsize] = predPatch[padSize:padSize+patchsize, padSize:padSize+patchsize]
             pred_mask_pad[i+padSize:i+padSize+patchsize, j+padSize:j+padSize+patchsize] = predLabel[padSize:padSize+patchsize, padSize:padSize+patchsize]
 
     ''' clip back into original shape '''        
     pred_mask = pred_mask_pad[padSize:padSize+H, padSize:padSize+W] # clip back to original shape
-    prod_mask = prob_mask_pad[padSize:padSize+H, padSize:padSize+W] # clip back to original shape
+    # prod_mask = prob_mask_pad[padSize:padSize+H, padSize:padSize+W] # clip back to original shape
 
-    return pred_mask, prod_mask
+    return pred_mask
 
 def gen_errMap(grouthTruth, preMap, save_url=False):
     errMap = np.zeros(preMap.shape)
@@ -201,8 +198,7 @@ def apply_model_on_event(model, test_id, output_dir, cfg):
 
     print(f"------------------> {test_id} <-------------------")
 
-    predMask, probMask = inference(model, data_dir, event, cfg)
-
+    predMask = inference(model, data_dir, event, cfg)
     print(f"predMask shape: {predMask.shape}, unique: {np.unique(predMask)}")
     # print(f"probMask: [{probMask.min()}, {probMask.max()}]")
 
@@ -210,19 +206,18 @@ def apply_model_on_event(model, test_id, output_dir, cfg):
     # # [0,100/255,0]
     # mtbs_palette = [[0,100/255,0], [127/255,1,212/255], [1,1,0], [1,0,0], [127/255,1,0], [1,1,1]]
 
-    plt.imsave(output_dir / f"{test_id}_pred.png", predMask, cmap='gray', vmin=0, vmax=1)
-    # plt.imsave(output_dir / f"{test_id}_probMap.png", predMask, cmap='gray', vmin=0, vmax=1)
-
-        # read and save true labels
-    if os.path.isfile(data_dir / "mask" / "poly" / f"{event}.tif"):
-        trueLabel = tiff.imread(data_dir / "mask" / "poly" / f"{event}.tif")
+    tiff.imsave(output_dir / f"{test_id}_pred.tif", predMask)
+    # imsave(output_dir / f"{test_id}_pred.png", predMask)
+    
+    # read and save true labels
+    if os.path.isfile(data_dir / "mask" / cfg.DATA.TEST_MASK / f"{event}.tif"):
+        trueLabel = tiff.imread(data_dir / "mask" / cfg.DATA.TEST_MASK / f"{event}.tif")
         # _, _, trueLabel = geotiff.read(data_dir / "mask" / "poly" / f"{event}.tif")
         # geotiff.save(output_dir / f"{test_id}_predLabel.tif", predMask[np.newaxis,]) 
 
         trueLabel = trueLabel.squeeze()
-        # print(trueLabel.shape, predMask.shape)
 
-        plt.imsave(output_dir / f"{test_id}_gts.png", trueLabel, cmap='gray', vmin=0, vmax=1)
+        # plt.imsave(output_dir / f"{test_id}_gts.png", trueLabel, cmap='gray', vmin=0, vmax=1)
         gen_errMap(trueLabel, predMask, save_url=output_dir / f"{test_id}.png")
 
 
@@ -308,7 +303,7 @@ def run_app(cfg : DictConfig) -> None:
     # for test_id in test_id_list:
     #     apply_model_on_event(model, test_id, output_dir, satellites=['S1', 'S2'])
 
-    run_dir = Path("/home/p/u/puzhao/smp-seg-pytorch/outputs/run_s1s2_UNet_resnet18_['S1']_prepost-wd-1e-3_20220113T202555")
+    run_dir = Path("/home/p/u/puzhao/smp-seg-pytorch/outputs/run_s1s2_UNet_['S2']_post_20220226T084623")
     model_url = run_dir / "model.pth"
     output_dir = run_dir / "errMap"
     evaluate_model(cfg, model_url, output_dir)

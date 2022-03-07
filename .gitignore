@@ -1,6 +1,9 @@
 data/*
 README_local_only.md
 outputs/*
+outputs_V0/*
+outputs_igarss/*
+figures/
 *.out
 *.log
 wandb/*

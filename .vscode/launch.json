@@ -9,16 +9,10 @@
             "type": "python",
             "request": "launch",
             "program": "${file}",
-            "console": "integratedTerminal"
-        },
-        {
-            "name": "Python: Current File",
-            "type": "python",
-            "request": "launch",
-            "program": "${file}",
             "console": "integratedTerminal",
             "env": {
-                "PYTHONPATH": "/geoinfo_vol1/home/p/u/puzhao/miniforge3/envs/pytorch/bin/python"
+                "PYTHONPATH": "/geoinfo_vol1/home/p/u/puzhao/miniforge3/envs/pytorch/bin/python",
+                "CUDA_VISIBLE_DEVICES": "7",
             },
         }
     ]

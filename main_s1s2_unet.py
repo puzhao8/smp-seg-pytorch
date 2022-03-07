@@ -73,9 +73,14 @@ def loss_fun(CFG, DEVICE='cuda'):
         criterion = smp.utils.losses.DiceLoss(eps=1, activation=CFG.MODEL.ACTIVATION)
 
     elif CFG.MODEL.LOSS_TYPE == 'CrossEntropyLoss':
-        balance_weight = [CFG.MODEL.NEGATIVE_WEIGHT, CFG.MODEL.POSITIVE_WEIGHT]
+        # balance_weight = [CFG.MODEL.NEGATIVE_WEIGHT, CFG.MODEL.POSITIVE_WEIGHT]
+        # balance_weight = torch.tensor(balance_weight).float().to(DEVICE)
+        # criterion = nn.CrossEntropyLoss(weight = balance_weight)
+
+        balance_weight = [class_weight for class_weight in CFG.MODEL.CLASS_WEIGHTS]
         balance_weight = torch.tensor(balance_weight).float().to(DEVICE)
-        criterion = nn.CrossEntropyLoss(weight = balance_weight)
+        criterion = nn.CrossEntropyLoss(weight = balance_weight, ignore_index=-1)
+        # criterion = nn.CrossEntropyLoss(ignore_index=-1)
         
     elif CFG.MODEL.LOSS_TYPE == 'SoftDiceLoss':
         criterion = soft_dice_loss 
@@ -124,13 +129,15 @@ class SegModel(object):
     
     def get_dataloaders(self) -> dict:
 
-        if self.cfg.MODEL.NUM_CLASSES == 1:
-            classes = ['burned']
-        elif self.cfg.MODEL.NUM_CLASSES == 2:
-            classes = ['unburn', 'burned']
-        elif self.cfg.MODEL.NUM_CLASSES > 2:
-            print(" ONLY ALLOW ONE or TWO CLASSES SO FAR !!!")
-            pass
+        # if self.cfg.MODEL.NUM_CLASSES == 1:
+        #     classes = ['burned']
+        # elif self.cfg.MODEL.NUM_CLASSES == 2:
+        #     classes = ['unburn', 'burned']
+        # elif self.cfg.MODEL.NUM_CLASSES > 2:
+        #     print(" ONLY ALLOW ONE or TWO CLASSES SO FAR !!!")
+        #     pass
+
+        classes = self.cfg.MODEL.CLASS_NAMES
 
         """ Data Preparation """
         train_dataset = Dataset(
@@ -230,8 +237,8 @@ class SegModel(object):
             valid_logs = self.valid_logs
             
             # do something (save model, change lr, etc.)
-            if valid_logs['iou_score'] > max_score:
-                max_score = valid_logs['iou_score']
+            if valid_logs['iou_score_class1'] > max_score:
+                max_score = valid_logs['iou_score_class1']
 
                 if (1 == epoch) or (0 == (epoch % self.cfg.MODEL.SAVE_INTERVAL)):
                     torch.save(self.model, self.MODEL_URL)
@@ -266,7 +273,8 @@ class SegModel(object):
     def step(self, phase) -> dict:
         logs = {}
         loss_meter = AverageValueMeter()
-        metrics_meters = {metric.__name__: AverageValueMeter() for metric in self.metrics}
+        # metrics_meters = {metric.__name__: AverageValueMeter() for metric in self.metrics}
+        metrics_meters = {f"{metric.__name__}_class{cls}": AverageValueMeter() for metric in self.metrics for cls in range(0, max(2, self.cfg.MODEL.NUM_CLASSES))}
 
         # if ('Train' in phase) and (self.cfg.useDataWoCAug):
         #     dataLoader_woCAug = iter(self.dataloaders['Train_woCAug'])
@@ -278,7 +286,7 @@ class SegModel(object):
                 ''' move data to GPU '''
                 input = []
                 for x_ in x: input.append(x_.to(self.DEVICE))
-                y = y.to(self.DEVICE)
+                y = y.to(self.DEVICE) # BCHW
                 # print(len(input))
 
                 ''' do prediction '''
@@ -287,10 +295,14 @@ class SegModel(object):
                     out = self.model.forward(input)
                 else:
                     out = self.model.forward(input)[-1]
-                y_pred = self.activation(out) # If use this, set IoU/F1 metrics activation=None
 
+                if 'softmax' in self.cfg.MODEL.ACTIVATION:
+                    y_gts = torch.argmax(y, dim=1) # BHW [0, 1, 2, NUM_CLASSES-1]
+                    y_pred = torch.argmax(self.activation(out), dim=1) # BHW
+                
                 ''' compute loss '''
-                loss_ = self.criterion(out, y)
+                # loss_ = self.criterion(out, y) # include activation
+                loss_ = self.criterion(out, y_gts) # Cross Entropy Loss
 
                 ''' Back Propergation (BP) '''
                 if phase == 'train':
@@ -308,9 +320,6 @@ class SegModel(object):
                     if self.USE_LR_SCHEDULER:
                         self.lr_scheduler.step()
 
-                # if mask is in one-hot: NCWH, C=NUM_CLASSES (C>1), and do nothing if C=1
-                if y.shape[1] >= 2: 
-                    y = self.activation(y)
 
                 ''' update loss and metrics logs '''
                 # update loss logs
@@ -322,8 +331,15 @@ class SegModel(object):
 
                 # update metrics logs
                 for metric_fn in self.metrics:
-                    metric_value = metric_fn(y_pred, y).cpu().detach().numpy()
-                    metrics_meters[metric_fn.__name__].add(metric_value)
+                    # metric_value = metric_fn(y_pred, y_gts).cpu().detach().numpy()
+                    # metrics_meters[metric_fn.__name__].add(metric_value)
+
+                    for cls in range(0, max(2, self.cfg.MODEL.NUM_CLASSES)):
+                        # metric_value = metric_fn(y_pred[:,cls,...], y[:,cls,...]).cpu().detach().numpy()
+                        cls_pred = (y_pred==cls).type(torch.FloatTensor)
+                        cls_gts = (y_gts==cls).type(torch.FloatTensor)
+                        metric_value = metric_fn(cls_pred, cls_gts).cpu().detach().numpy()
+                        metrics_meters[f"{metric_fn.__name__}_class{cls}"].add(metric_value)
 
                 metrics_logs = {k: v.mean for k, v in metrics_meters.items()}
                 logs.update(metrics_logs)
@@ -372,11 +388,10 @@ def run_app(cfg : DictConfig) -> None:
     from prettyprinter import pprint
     
     cfg_dict = OmegaConf.to_container(cfg, resolve=True)
-    cfg_flat = pd.json_normalize(cfg_dict, sep='.').to_dict(orient='records')[0]
+    cfg_flat = pd.json_normalize(cfg_dict, sep='_').to_dict(orient='records')[0]
 
-    # cfg.MODEL.DEBUG = False
-    # if not cfg.MODEL.DEBUG:
-    wandb.init(config=cfg_flat, project=cfg.PROJECT.NAME, entity=cfg.PROJECT.ENTITY, name=cfg.EXP.NAME)
+    wandb.init(config=cfg_flat, project="wildfire-s1s2alos-canada-rse", entity=cfg.PROJECT.ENTITY, name=cfg.EXP.NAME)
+    # wandb.init(config=cfg_flat, project=cfg.PROJECT.NAME, entity=cfg.PROJECT.ENTITY, name=cfg.EXP.NAME)
     pprint(cfg_flat)
 
     ''' train '''

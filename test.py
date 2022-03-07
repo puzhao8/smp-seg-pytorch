@@ -196,12 +196,48 @@
 # print(np.mean(res['image']-res1["image"]))
 
 
+# import tifffile as tiff
+# from imageio import imread, imsave
+# import numpy as np
+# import random
+# from pathlib import Path
+# root_dir = Path("/home/p/u/puzhao/wildfire-s1s2-dataset-ca-tiles/test_images")
+# event = "CA_2019_NT_8"
 
-import torch
-import torch.nn.functional as F
+# pre = tiff.imread(root_dir / 'S2' / 'pre' / f"{event}.tif")
+# post = tiff.imread(root_dir / 'S2' / 'post' / f"{event}.tif")
 
-input = torch.randn(1,2,3,3)
-output = F.normalize(input, dim=1, p=2)
+# def nbr(image):
+#     nir = image[3,]
+#     swir = image[5,]
+#     return (nir - swir)/(nir + swir)
 
-print(input)
-print(output)
+# dnbr = nbr(pre) - nbr(post)
+
+# imsave(f'{event}_dNBR.png', dnbr)
+# imsave(f'{event}_NBR_pre.png', nbr(pre))
+# imsave(f'{event}_NBR_post.png', nbr(post))
+# # imsave(f'{event}_dNBR_bin_0.1.png', (dnbr>0.1).astype(float))
+
+
+import tifffile as tiff
+import numpy as np
+from pathlib import Path
+import os
+
+# data = tiff.imread("/home/p/u/puzhao/wildfire-s1s2-dataset-us-tiles/train/mask/mtbs/az3178211084220170423_3_3_.tif")
+# print(np.unique(data))
+
+# dataPath = Path("/home/p/u/puzhao/wildfire-s1s2-dataset-us-tiles/train")
+# s1_dir = Path("/home/p/u/puzhao/wildfire-s1s2-dataset-us-tiles/train/S1/post")
+# s2_dir = Path("/home/p/u/puzhao/wildfire-s1s2-dataset-us-tiles/train/S2/post")
+# print(len(os.listdir(s1_dir)))
+# print(len(os.listdir(s2_dir)))
+
+
+# import torch
+# x = torch.from_numpy(np.random.rand(10,1,3,3)).cuda()
+# print(x)
+
+img = tiff.imread("/home/p/u/puzhao/wildfire-progression-dataset/CA_2021_Kamloops/S2/post/20210907T19_S2.tif")
+print(img.shape)

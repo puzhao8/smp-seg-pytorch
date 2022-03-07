@@ -1,4 +1,6 @@
+from operator import index
 import albumentations as albu
+from matplotlib import transforms
 
 def get_training_augmentation():
     train_transform = [
@@ -70,3 +72,94 @@ def get_preprocessing(preprocessing_fn):
         albu.Lambda(image=to_tensor, mask=to_tensor),
     ]
     return albu.Compose(_transform)
+
+
+
+
+import torchvision.transforms as T
+import matplotlib.pyplot as plt
+
+def augment_data(imgs):
+    '''
+    imgs: list of array
+    '''
+    inputs = torch.cat(imgs, dim=0)
+    channels_list = [im.shape[0] for im in imgs]
+    idxs = [np.sum(np.array(channels_list[:i+1])) for i in range(0,len(channels_list))]
+    idxs = [0] + idxs
+
+    _transforms = T.Compose([
+        T.RandomVerticalFlip(p=0.5),
+        T.RandomHorizontalFlip(p=0.5),
+        T.RandomRotation(degrees=270),
+        T.RandomResizedCrop(size=(256,256), scale=(0.2,1), interpolation=T.InterpolationMode.NEAREST),
+        # T.ToTensor()
+    ])
+
+    input_aug = _transforms(inputs)
+    outputs = [input_aug[idxs[i]:idxs[i+1]] for i in range(len(imgs))]
+    return outputs
+
+
+if __name__ == "__main__":
+
+    from pathlib import Path
+    import os
+    import tifffile as tiff
+    import torch
+    import numpy as np
+
+    train_dir = Path('/home/p/u/puzhao/wildfire-s1s2-dataset-ca-tiles') / "test"
+    fileList = os.listdir(train_dir / "mask" / "poly")
+    
+    filename = fileList[400]
+
+    im1 = tiff.imread(train_dir / "S2" / "pre" / f"{filename}")[[5,3,2],] 
+    im2 = tiff.imread(train_dir / "S2" / "post" / f"{filename}")[[5,3,2],] 
+    mask = tiff.imread(train_dir / "mask" / "poly" / f"{filename}")
+
+    # mean=[0.485, 0.456, 0.406],
+    # std=[0.229, 0.224, 0.225]
+
+    im1 = np.nan_to_num(im1, 0)
+    im2 = np.nan_to_num(im2, 0)
+
+    min, max = im2.min(), im2.max()
+    im1 = (im1 - min) / (max - min)
+    im2 = (im2 - min) / (max - min)
+
+
+    # plt.imsave("aug_org.png", im1.transpose(1,2,0))
+
+    im1 = torch.from_numpy(im1)
+    im2 = torch.from_numpy(im2)
+    mask = torch.from_numpy(mask[np.newaxis,])
+
+    imgs = [im1, im2, mask]
+
+    # imgs = [(im*255).type(torch.uint8) for im in imgs]
+
+    outputs = augment_data(imgs)
+    print(type(outputs[0]))
+    print(len(fileList))
+    # print(np.sum((im1_ - im2_).type(torch.float16)))
+
+    # print(im1_.shape, mask_.shape)
+    # print(im1_ - mask_)
+
+    cnt = 0
+    fig, axs = plt.subplots(nrows=len(imgs), ncols=2, constrained_layout=True)
+    for i in range(len(imgs)):
+        img = imgs[i]
+        img_ = outputs[i]
+
+        if len(img.shape) >= 3:
+            axs[i,0].imshow(img.numpy().transpose(1,2,0))
+            axs[i,1].imshow(img_.numpy().transpose(1,2,0))
+        else:
+            axs[i,0].imshow(img.numpy())
+            axs[i,1].imshow(img_.numpy())
+
+    plt.savefig("aug.png")
+
+    print(np.unique(im1))

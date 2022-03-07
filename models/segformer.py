@@ -128,7 +128,7 @@ class SegFormer(nn.Module):
             mode='bilinear',
             align_corners=self.align_corners)
         c1_ = self.linear_c1(c1).permute([0, 2, 1])
-        _c1 = c1_.reshape(*c2_.shape[:2], c1_shape[2], c1_shape[3])
+        _c1 = c1_.reshape(*c1_.shape[:2], c1_shape[2], c1_shape[3])
 
         _c = self.linear_fuse(torch.cat([_c4, _c3, _c2, _c1], axis=1))
 
