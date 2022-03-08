@@ -3,7 +3,7 @@
 #     - s1s2_unet: s1
 
 PROJECT:
-    NAME: IGARSS-2022
+    NAME: wildfire-s1s2alos-canada-rse
     ENTITY: wildfire
 
 RAND: # Rrproduce Results
@@ -16,7 +16,7 @@ DATA:
     # DIR: /cephyr/NOBACKUP/groups/snic2021-7-104/wildfire-s1s2-dataset-ak-tiles
     # DIR: /cephyr/NOBACKUP/groups/snic2021-7-104/wildfire-s1s2-dataset-ca-tiles
 
-    SATELLITES: ['S2']
+    SATELLITES: ['S1']
     PREPOST: ['pre', 'post']
     STACKING: True # stack bi-temporal data
 
@@ -49,7 +49,7 @@ MODEL:
     # ACTIVATION: sigmoid #sigmoid
 
     LOSS_TYPE: CrossEntropyLoss # DiceLoss
-    NUM_CLASSES: 2
+    NUM_CLASS: 2
     CLASS_NAMES: ['unburn', 'burned']
     CLASS_WEIGHTS: [0.5, 0.5]
     ACTIVATION: softmax #sigmoid
@@ -79,10 +79,10 @@ EVAL:
     PATCHSIZE: 512
 
 EXP:
-    FOLDER: outputs
     NOTE: debug
+    FOLDER: Canada_RSE_2022
     NAME: ${DATA.TRAIN_MASK}_${MODEL.ARCH}_${DATA.SATELLITES}_${EXP.NOTE}
-    OUTPUT: ./${EXP.FOLDER}/run_${EXP.NAME}_${now:%Y%m%dT%H%M%S} #${defaults.0.data}
+    OUTPUT: /home/p/u/puzhao/run_results/${EXP.FOLDER}/run_${EXP.NAME}_${now:%Y%m%dT%H%M%S} #${defaults.0.data}
 
 hydra:
     run:

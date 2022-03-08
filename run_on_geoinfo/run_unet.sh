@@ -47,7 +47,7 @@ PYTHONUNBUFFERED=1;
 #             MODEL.ARCH=UNet \
 #             MODEL.USE_DECONV=False \
 #             MODEL.WEIGHT_DECAY=0.01 \
-#             MODEL.NUM_CLASSES=1 \
+#             MODEL.NUM_CLASS=1 \
 #             MODEL.LOSS_TYPE=DiceLoss \
 #             MODEL.LR_SCHEDULER=cosine \
 #             MODEL.ACTIVATION=sigmoid \
@@ -77,7 +77,7 @@ python3 main_s1s2_unet.py \
             MODEL.ENCODER_WEIGHTS=imagenet \
             MODEL.USE_DECONV=False \
             MODEL.WEIGHT_DECAY=0.01 \
-            MODEL.NUM_CLASSES=2 \
+            MODEL.NUM_CLASS=2 \
             MODEL.LOSS_TYPE=CrossEntropyLoss \
             MODEL.LR_SCHEDULER=cosine \
             MODEL.ACTIVATION=softmax2d \
@@ -127,7 +127,7 @@ python3 main_s1s2_unet.py \
 #             DATA.STACKING=True \
 #             DATA.INPUT_BANDS.S2=['B4','B8','B12'] \
 #             MODEL.ARCH=UNet \
-#             MODEL.NUM_CLASSES=2 \
+#             MODEL.NUM_CLASS=2 \
 #             MODEL.CLASS_NAMES=['unburn','low'] \
 #             MODEL.CLASS_WEIGHTS=[0.5,0.5] \
 #             MODEL.USE_DECONV=True \
@@ -158,7 +158,7 @@ python3 main_s1s2_unet.py \
 #             MODEL.USE_DECONV=False \
 #             MODEL.LEARNING_RATE=0.0001 \
 #             MODEL.WEIGHT_DECAY=0.01 \
-#             MODEL.NUM_CLASSES=1 \
+#             MODEL.NUM_CLASS=1 \
 #             MODEL.LOSS_TYPE=DiceLoss \
 #             MODEL.LR_SCHEDULER=cosine \
 #             MODEL.ACTIVATION=sigmoid \
@@ -185,7 +185,7 @@ python3 main_s1s2_unet.py \
 #             MODEL.USE_DECONV=False \
 #             MODEL.LEARNING_RATE=0.0001 \
 #             MODEL.WEIGHT_DECAY=0.01 \
-#             MODEL.NUM_CLASSES=1 \
+#             MODEL.NUM_CLASS=1 \
 #             MODEL.LOSS_TYPE=DiceLoss \
 #             MODEL.LR_SCHEDULER=cosine \
 #             MODEL.ACTIVATION=sigmoid \
@@ -215,7 +215,7 @@ python3 main_s1s2_unet.py \
 #             MODEL.ENCODER_WEIGHTS=imagenet \
 #             MODEL.USE_DECONV=True \
 #             MODEL.WEIGHT_DECAY=0.01 \
-#             MODEL.NUM_CLASSES=1 \
+#             MODEL.NUM_CLASS=1 \
 #             MODEL.LOSS_TYPE=DiceLoss \
 #             MODEL.LR_SCHEDULER=cosine \
 #             MODEL.ACTIVATION=sigmoid \
@@ -248,7 +248,7 @@ python3 main_s1s2_unet.py \
 #             MODEL.ENCODER_WEIGHTS=imagenet \
 #             MODEL.USE_DECONV=True \
 #             MODEL.WEIGHT_DECAY=0.01 \
-#             MODEL.NUM_CLASSES=1 \
+#             MODEL.NUM_CLASS=1 \
 #             MODEL.LOSS_TYPE=DiceLoss \
 #             MODEL.LR_SCHEDULER=cosine \
 #             MODEL.ACTIVATION=sigmoid \
@@ -281,7 +281,7 @@ python3 main_s1s2_unet.py \
 #             MODEL.ENCODER_WEIGHTS=imagenet \
 #             MODEL.USE_DECONV=True \
 #             MODEL.WEIGHT_DECAY=0.01 \
-#             MODEL.NUM_CLASSES=1 \
+#             MODEL.NUM_CLASS=1 \
 #             MODEL.LOSS_TYPE=DiceLoss \
 #             MODEL.LR_SCHEDULER=cosine \
 #             MODEL.ACTIVATION=sigmoid \

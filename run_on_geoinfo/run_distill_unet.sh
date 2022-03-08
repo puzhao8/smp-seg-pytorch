@@ -72,7 +72,7 @@ python3 main_s1s2_distill_unet.py \
             MODEL.L2_NORM=False \
             MODEL.USE_DECONV=True \
             MODEL.WEIGHT_DECAY=0.01 \
-            MODEL.NUM_CLASSES=1 \
+            MODEL.NUM_CLASS=1 \
             MODEL.LOSS_TYPE=DiceLoss \
             MODEL.LOSS_COEF=[1,0,0] \
             MODEL.LR_SCHEDULER=cosine \

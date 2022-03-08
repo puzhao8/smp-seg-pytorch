@@ -119,11 +119,11 @@ class SegModel(object):
     
     def get_dataloaders(self) -> dict:
 
-        if self.cfg.model.NUM_CLASSES == 1:
+        if self.cfg.model.NUM_CLASS == 1:
             classes = ['burned']
-        elif self.cfg.model.NUM_CLASSES == 2:
+        elif self.cfg.model.NUM_CLASS == 2:
             classes = ['unburn', 'burned']
-        elif self.cfg.model.NUM_CLASSES > 2:
+        elif self.cfg.model.NUM_CLASS > 2:
             print(" ONLY ALLOW ONE or TWO CLASSES SO FAR !!!")
             pass
 
@@ -269,8 +269,8 @@ class SegModel(object):
                 loss_logs = {'total_loss': loss_meter.mean}
                 logs.update(loss_logs)
 
-                # added for NUM_CLASSES >= 2
-                if self.cfg.model.NUM_CLASSES >= 2:
+                # added for NUM_CLASS >= 2
+                if self.cfg.model.NUM_CLASS >= 2:
                     y_pred = self.activation(out)
                     y = self.activation(y)
 

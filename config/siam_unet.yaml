@@ -45,7 +45,7 @@ MODEL:
     TOPO: [16, 32, 64, 128]
     USE_DECONV: True
     LOSS_TYPE: DiceLoss # DiceLoss
-    NUM_CLASSES: 1
+    NUM_CLASS: 1
     ACTIVATION: sigmoid #sigmoid
 
     ENCODER: resnet18 # 'mobilenet_v2'

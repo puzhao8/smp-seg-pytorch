@@ -205,8 +205,14 @@ if __name__ == "__main__":
     # compute_IoU_F1(phase, result_dir, dataset_dir)
 
 
-    gts_dir = Path("/home/p/u/puzhao/wildfire-s1s2-dataset-us-tiles") / "test_images/mask/mtbs"
-    pred_dir = Path("/home/p/u/puzhao/smp-seg-pytorch/outputs/run_s1s2_UNet_['S2']_mtbs_20220227T233525_work/errMap")
-    multiclass_IoU_F1(pred_dir, gts_dir, NUM_CLASS=3)
+    # gts_dir = Path("/home/p/u/puzhao/wildfire-s1s2-dataset-us-tiles") / "test_images/mask/mtbs"
+    # pred_dir = Path("/home/p/u/puzhao/smp-seg-pytorch/outputs/run_s1s2_UNet_['S2']_mtbs_20220227T233525_work/errMap")
+    # multiclass_IoU_F1(pred_dir, gts_dir, NUM_CLASS=3)
+
+
+    gts_dir = Path("/home/p/u/puzhao/wildfire-s1s2-dataset-ca-tiles") / "test_images/mask/poly"
+    pred_dir = Path("/home/p/u/puzhao/smp-seg-pytorch/Canada_RSE_2022/run_poly_UNet_['S1']_EF_20220308T000802/errMap")
+    multiclass_IoU_F1(pred_dir, gts_dir, NUM_CLASS=2)
+
 
     wandb.finish()

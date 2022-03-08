@@ -124,11 +124,11 @@ class SegModel(object):
     
     def get_dataloaders(self) -> dict:
 
-        # if self.cfg.MODEL.NUM_CLASSES == 1:
+        # if self.cfg.MODEL.NUM_CLASS == 1:
         #     classes = ['burned']
-        # elif self.cfg.MODEL.NUM_CLASSES == 2:
+        # elif self.cfg.MODEL.NUM_CLASS == 2:
         #     classes = ['unburn', 'burned']
-        # elif self.cfg.MODEL.NUM_CLASSES > 2:
+        # elif self.cfg.MODEL.NUM_CLASS > 2:
         #     classes = self.cfg.MODEL.CLASS_NAMES
         #     # print(" ONLY ALLOW ONE or TWO CLASSES SO FAR !!!")
         # else:
@@ -274,7 +274,7 @@ class SegModel(object):
         loss_seg_meter = AverageValueMeter()
         loss_reg_meter = AverageValueMeter()
         
-        metrics_meters = {f"{metric.__name__}_class{cls}": AverageValueMeter() for metric in self.metrics for cls in range(0, max(2, self.cfg.MODEL.NUM_CLASSES))}
+        metrics_meters = {f"{metric.__name__}_class{cls}": AverageValueMeter() for metric in self.metrics for cls in range(0, max(2, self.cfg.MODEL.NUM_CLASS))}
         with tqdm(iter(self.dataloaders[phase]), desc=phase, file=sys.stdout, disable=not self.cfg.MODEL.VERBOSE) as iterator:
             for i, (x, y) in enumerate(iterator):
                 self.optimizer.zero_grad()
@@ -306,7 +306,7 @@ class SegModel(object):
                     out = self.model.forward(input)
                 elif 'UNet_dualHeads' in self.cfg.MODEL.ARCH:
                     reg_out, out = self.model.forward(input) #NCHW
-                    reg_act = (self.cfg.MODEL.NUM_CLASSES - 1) * torch.sigmoid(reg_out)
+                    reg_act = (self.cfg.MODEL.NUM_CLASS - 1) * torch.sigmoid(reg_out)
 
                     # add regression loss
                     y_mask = torch.tensor((y>=1)).float()
@@ -342,7 +342,7 @@ class SegModel(object):
                     if self.USE_LR_SCHEDULER:
                         self.lr_scheduler.step()
 
-                # # if mask is in one-hot: NCWH, C=NUM_CLASSES (C>1), and do nothing if C=1
+                # # if mask is in one-hot: NCWH, C=NUM_CLASS (C>1), and do nothing if C=1
                 # if y.shape[1] >= 2: 
                 #     y = self.activation(y)
 
@@ -362,7 +362,7 @@ class SegModel(object):
 
                 # update metrics logs
                 for metric_fn in self.metrics:
-                    for cls in range(0, max(2, self.cfg.MODEL.NUM_CLASSES)):
+                    for cls in range(0, max(2, self.cfg.MODEL.NUM_CLASS)):
                         # metric_value = metric_fn(y_pred[:,cls,...], y[:,cls,...]).cpu().detach().numpy()
                         cls_pred = (y_pred==cls).type(torch.FloatTensor)
                         cls_gts = (y==cls).type(torch.FloatTensor)

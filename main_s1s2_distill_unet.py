@@ -135,11 +135,11 @@ class SegModel(object):
     
     def get_dataloaders(self) -> dict:
 
-        if self.cfg.MODEL.NUM_CLASSES == 1:
+        if self.cfg.MODEL.NUM_CLASS == 1:
             classes = ['burned']
-        elif self.cfg.MODEL.NUM_CLASSES == 2:
+        elif self.cfg.MODEL.NUM_CLASS == 2:
             classes = ['unburn', 'burned']
-        elif self.cfg.MODEL.NUM_CLASSES > 2:
+        elif self.cfg.MODEL.NUM_CLASS > 2:
             print(" ONLY ALLOW ONE or TWO CLASSES SO FAR !!!")
             pass
 
@@ -336,7 +336,7 @@ class SegModel(object):
                     if self.USE_LR_SCHEDULER:
                         self.lr_scheduler.step()
 
-                # if mask is in one-hot: NCWH, C=NUM_CLASSES (C>1), and do nothing if C=1
+                # if mask is in one-hot: NCWH, C=NUM_CLASS (C>1), and do nothing if C=1
                 if y.shape[1] >= 2: 
                     y = self.activation(y)
 

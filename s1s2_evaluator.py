@@ -188,7 +188,6 @@ def gen_errMap(grouthTruth, preMap, save_url=False):
 
 def apply_model_on_event(model, test_id, output_dir, cfg):
     output_dir = Path(output_dir)
-    output_dir.mkdir(exist_ok=True)
     data_dir = Path(cfg.DATA.DIR) / "test_images"
 
     # orbKeyLen = len(test_id.split("_")[-1]) + 1 
@@ -222,12 +221,7 @@ def apply_model_on_event(model, test_id, output_dir, cfg):
 
 
 def evaluate_model(cfg, model_url, output_dir):
-
-    # import json
-    # json_url = Path(cfg.DATA.DIR) / "train_test.json"
-    # with open(json_url) as json_file:
-    #     split_dict = json.load(json_file)
-    # test_id_list = split_dict['test']['sarname']
+    output_dir.mkdir(exist_ok=True)
 
     test_id_list = os.listdir(Path(cfg.DATA.DIR) / "test_images" / "S2" / "post")
     test_id_list = [test_id[:-4] for test_id in test_id_list]
@@ -235,7 +229,6 @@ def evaluate_model(cfg, model_url, output_dir):
 
     model = torch.load(model_url, map_location=torch.device('cpu'))
     # output_dir = Path(SegModel.project_dir) / 'outputs'
-    output_dir.mkdir(exist_ok=True)
 
     band_index_dict = get_band_index_dict(cfg)
     cfg = edict(cfg)
@@ -303,16 +296,18 @@ def run_app(cfg : DictConfig) -> None:
     # for test_id in test_id_list:
     #     apply_model_on_event(model, test_id, output_dir, satellites=['S1', 'S2'])
 
-    run_dir = Path("/home/p/u/puzhao/smp-seg-pytorch/outputs/run_s1s2_UNet_['S2']_post_20220226T084623")
+    run_dir = Path("/home/p/u/puzhao/smp-seg-pytorch/Canada_RSE_2022/run_poly_UNet_['S1']_EF_20220308T000802")
     model_url = run_dir / "model.pth"
     output_dir = run_dir / "errMap"
     evaluate_model(cfg, model_url, output_dir)
 
     ''' compute IoU and F1 for all events '''
-    from utils.iou4all import compute_IoU_F1
-    compute_IoU_F1(phase="test_images", 
-                    result_dir=run_dir / "errMap", 
-                    dataset_dir=cfg.DATA.DIR)
+    from utils.iou4all import multiclass_IoU_F1
+    multiclass_IoU_F1(
+        pred_dir = run_dir / "errMap", 
+        gts_dir = Path(cfg.DATA.DIR) / "test_images" / "mask" / cfg.DATA.TEST_MASK, 
+        NUM_CLASS=max(2, cfg.MODEL.NUM_CLASS)
+    )
     
     #########################################################################
     wandb.finish()

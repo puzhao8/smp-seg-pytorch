@@ -22,9 +22,9 @@ def get_model(cfg):
 
     ########################### COMPUTE INPUT & OUTPUT CHANNELS ############################
     print("Satellites: ", cfg.DATA.SATELLITES)
-    print("NUM_CLASSES:", cfg.MODEL.NUM_CLASSES)
+    print("num_classes:", cfg.MODEL.NUM_CLASS)
 
-    # cfg.MODEL.NUM_CLASSES = cfg.MODEL.cfg.MODEL.NUM_CLASSES
+    # cfg.MODEL.NUM_CLASS = cfg.MODEL.cfg.MODEL.NUM_CLASS
 
     INPUT_CHANNELS_DICT = {}
     INPUT_CHANNELS_LIST = []
@@ -38,14 +38,14 @@ def get_model(cfg):
         INPUT_CHANNELS = sum(INPUT_CHANNELS_LIST)
         MODEL = model_zoo[cfg.MODEL.ARCH]
         return MODEL(INPUT_CHANNELS, 
-                    num_classes=cfg.MODEL.NUM_CLASSES, 
+                    num_classes=cfg.MODEL.NUM_CLASS, 
                     topo=cfg.MODEL.TOPO,
                     use_deconv=cfg.MODEL.USE_DECONV) #'FC-EF'
 
     # if cfg.MODEL.ARCH == "UNet":
     #     INPUT_CHANNELS = sum(INPUT_CHANNELS_LIST)
     #     model = UNet(INPUT_CHANNELS, 
-    #                     num_classes=cfg.MODEL.NUM_CLASSES, 
+    #                     num_classes=cfg.MODEL.NUM_CLASS, 
     #                     topo=cfg.MODEL.TOPO,
     #                     use_deconv=cfg.MODEL.USE_DECONV) #'FC-EF'
 
@@ -53,13 +53,13 @@ def get_model(cfg):
     if cfg.MODEL.ARCH == 'distill_unet':
         INPUT_CHANNELS = INPUT_CHANNELS_LIST[0] # defined by the first sensor
         return UNet(INPUT_CHANNELS, 
-                        num_classes=cfg.MODEL.NUM_CLASSES, 
+                        num_classes=cfg.MODEL.NUM_CLASS, 
                         topo=cfg.MODEL.TOPO, 
                     ) #'FC-Siam-diff'
 
     if cfg.MODEL.ARCH in segformer_models.keys():
         INPUT_CHANNELS = sum(INPUT_CHANNELS_LIST)
-        return segformer_models[cfg.MODEL.ARCH](in_channels=INPUT_CHANNELS, num_classes=cfg.MODEL.NUM_CLASSES)
+        return segformer_models[cfg.MODEL.ARCH](in_channels=INPUT_CHANNELS, num_classes=cfg.MODEL.NUM_CLASS)
     
     if cfg.MODEL.ARCH in ['SiamUnet_conc', 'SiamUnet_diff', 'DualUnet_LF']:
         if len(INPUT_CHANNELS_LIST) == 1: # single sensor
@@ -72,21 +72,24 @@ def get_model(cfg):
                 print("INPUT_CHANNELS is a list, pleae fix it!")
 
         if cfg.MODEL.ARCH == "SiamUnet_conc":
-            return SiamUnet_conc(INPUT_CHANNELS, cfg.MODEL.NUM_CLASSES, \
+            return SiamUnet_conc(INPUT_CHANNELS, 
+                                num_classes=cfg.MODEL.NUM_CLASS,
                                 topo=cfg.MODEL.TOPO, 
                                 share_encoder=cfg.MODEL.SHARE_ENCODER,
                                 use_deconv=cfg.MODEL.USE_DECONV
                             ) #'FC-Siam-conc'
 
         if cfg.MODEL.ARCH == "SiamUnet_diff":
-            return SiamUnet_diff(INPUT_CHANNELS, cfg.MODEL.NUM_CLASSES, 
+            return SiamUnet_diff(INPUT_CHANNELS, 
+                                num_classes=cfg.MODEL.NUM_CLASS, 
                                 topo=cfg.MODEL.TOPO, 
                                 share_encoder=cfg.MODEL.SHARE_ENCODER,
                                 use_deconv=cfg.MODEL.USE_DECONV
                             ) #'FC-Siam-diff'
 
         if cfg.MODEL.ARCH == "DualUnet_LF":
-            return DualUnet_LF(INPUT_CHANNELS, cfg.MODEL.NUM_CLASSES, 
+            return DualUnet_LF(INPUT_CHANNELS, 
+                                num_classes=cfg.MODEL.NUM_CLASS, 
                                 topo=cfg.MODEL.TOPO, 
                                 share_encoder=cfg.MODEL.SHARE_ENCODER,
                                 use_deconv=cfg.MODEL.USE_DECONV
@@ -94,10 +97,10 @@ def get_model(cfg):
 
     
     if cfg.MODEL.ARCH == "SiamUnet_minDiff":
-        return SiamUnet_diff(INPUT_CHANNELS, cfg.MODEL.NUM_CLASSES, topo=cfg.MODEL.TOPO) #'FC-Siam-diff'
+        return SiamUnet_diff(INPUT_CHANNELS, cfg.MODEL.NUM_CLASS, topo=cfg.MODEL.TOPO) #'FC-Siam-diff'
 
     if cfg.MODEL.ARCH == "cdc_unet":
-        return cdc_unet(INPUT_CHANNELS, cfg.MODEL.NUM_CLASSES) #'FC-EF'
+        return cdc_unet(INPUT_CHANNELS, cfg.MODEL.NUM_CLASS) #'FC-EF'
 
     ########################### Residual UNet ############################
     if cfg.MODEL.ARCH == f'UNet_{cfg.MODEL.ENCODER}':
@@ -112,7 +115,7 @@ def get_model(cfg):
             decoder_channels=cfg.MODEL.TOPO[::-1],
             # decoder_attention_type="scse",
             in_channels = INPUT_CHANNELS,
-            classes = cfg.MODEL.NUM_CLASSES, 
+            classes = cfg.MODEL.NUM_CLASS, 
             activation = None,
         )
 
@@ -123,7 +126,7 @@ def get_model(cfg):
         model = smp.DeepLabV3Plus(
             encoder_name = cfg.MODEL.ENCODER, 
             encoder_weights = cfg.MODEL.ENCODER_WEIGHTS, 
-            classes = cfg.MODEL.NUM_CLASSES, 
+            classes = cfg.MODEL.NUM_CLASS, 
             activation = cfg.MODEL.ACTIVATION,
             in_channels = INPUT_CHANNELS
         )
@@ -144,7 +147,7 @@ def get_model(cfg):
             encoder_name = cfg.MODEL.ENCODER, 
             encoder_weights = cfg.MODEL.ENCODER_WEIGHTS, 
             in_channels = input_channels,
-            classes = cfg.MODEL.NUM_CLASSES, 
+            classes = cfg.MODEL.NUM_CLASS, 
             activation = cfg.MODEL.ACTIVATION,
         )
 

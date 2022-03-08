@@ -129,11 +129,11 @@ class SegModel(object):
     
     def get_dataloaders(self) -> dict:
 
-        # if self.cfg.MODEL.NUM_CLASSES == 1:
+        # if self.cfg.MODEL.NUM_CLASS == 1:
         #     classes = ['burned']
-        # elif self.cfg.MODEL.NUM_CLASSES == 2:
+        # elif self.cfg.MODEL.NUM_CLASS == 2:
         #     classes = ['unburn', 'burned']
-        # elif self.cfg.MODEL.NUM_CLASSES > 2:
+        # elif self.cfg.MODEL.NUM_CLASS > 2:
         #     print(" ONLY ALLOW ONE or TWO CLASSES SO FAR !!!")
         #     pass
 
@@ -274,7 +274,7 @@ class SegModel(object):
         logs = {}
         loss_meter = AverageValueMeter()
         # metrics_meters = {metric.__name__: AverageValueMeter() for metric in self.metrics}
-        metrics_meters = {f"{metric.__name__}_class{cls}": AverageValueMeter() for metric in self.metrics for cls in range(0, max(2, self.cfg.MODEL.NUM_CLASSES))}
+        metrics_meters = {f"{metric.__name__}_class{cls}": AverageValueMeter() for metric in self.metrics for cls in range(0, max(2, self.cfg.MODEL.NUM_CLASS))}
 
         # if ('Train' in phase) and (self.cfg.useDataWoCAug):
         #     dataLoader_woCAug = iter(self.dataloaders['Train_woCAug'])
@@ -296,13 +296,16 @@ class SegModel(object):
                 else:
                     out = self.model.forward(input)[-1]
 
-                if 'softmax' in self.cfg.MODEL.ACTIVATION:
-                    y_gts = torch.argmax(y, dim=1) # BHW [0, 1, 2, NUM_CLASSES-1]
-                    y_pred = torch.argmax(self.activation(out), dim=1) # BHW
+                # if 'softmax' in self.cfg.MODEL.ACTIVATION:
+                y_gts = torch.argmax(y, dim=1) # BHW [0, 1, 2, NUM_CLASS-1]
+                y_pred = torch.argmax(self.activation(out), dim=1) # BHW
                 
                 ''' compute loss '''
                 # loss_ = self.criterion(out, y) # include activation
-                loss_ = self.criterion(out, y_gts) # Cross Entropy Loss
+                if 'DiceLoss' == self.cfg.MODEL.LOSS_TYPE:
+                    loss_ = self.criterion(y_pred, y_gts) # For Dice Loss
+                else:
+                    loss_ = self.criterion(out, y_gts) # Cross Entropy Loss
 
                 ''' Back Propergation (BP) '''
                 if phase == 'train':
@@ -320,7 +323,6 @@ class SegModel(object):
                     if self.USE_LR_SCHEDULER:
                         self.lr_scheduler.step()
 
-
                 ''' update loss and metrics logs '''
                 # update loss logs
                 loss_value = loss_.cpu().detach().numpy()
@@ -334,7 +336,7 @@ class SegModel(object):
                     # metric_value = metric_fn(y_pred, y_gts).cpu().detach().numpy()
                     # metrics_meters[metric_fn.__name__].add(metric_value)
 
-                    for cls in range(0, max(2, self.cfg.MODEL.NUM_CLASSES)):
+                    for cls in range(0, max(2, self.cfg.MODEL.NUM_CLASS)):
                         # metric_value = metric_fn(y_pred[:,cls,...], y[:,cls,...]).cpu().detach().numpy()
                         cls_pred = (y_pred==cls).type(torch.FloatTensor)
                         cls_gts = (y_gts==cls).type(torch.FloatTensor)
@@ -404,10 +406,12 @@ def run_app(cfg : DictConfig) -> None:
     evaluate_model(cfg, mySegModel.MODEL_URL, mySegModel.RUN_DIR / "errMap")
 
     ''' compute IoU and F1 for all events '''
-    from utils.iou4all import compute_IoU_F1
-    compute_IoU_F1(phase="test_images", 
-                    result_dir=mySegModel.RUN_DIR / "errMap", 
-                    dataset_dir=cfg.DATA.DIR)
+    from utils.iou4all import multiclass_IoU_F1
+    multiclass_IoU_F1(
+        pred_dir = mySegModel.RUN_DIR / "errMap", 
+        gts_dir = Path(cfg.DATA.DIR) / "test_images" / "mask" / cfg.DATA.TEST_MASK, 
+        NUM_CLASS=max(2, cfg.MODEL.NUM_CLASS)
+    )
     
     # if not cfg.MODEL.DEBUG:
     wandb.finish()
