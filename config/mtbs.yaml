@@ -38,8 +38,8 @@ DATA:
 MODEL:
     DEBUG: True
 
-    ARCH: UNet # UNet_dualHeads #UNet_resnet18 #FuseUNet, UNet
-    USE_DECONV: True
+    ARCH: UNet_dualHeads # UNet_dualHeads #UNet_resnet18 #FuseUNet, UNet
+    USE_DECONV: False
     TOPO: [16, 32, 64, 128]
     LOSS_TYPE: CrossEntropyLoss # DiceLoss
     ACTIVATION: softmax2d  
@@ -75,13 +75,16 @@ MODEL:
 
 EVAL:
     PATCHSIZE: 512
-    MODE: prg
-    PRG_DIR: /home/p/u/puzhao/wildfire-progression-dataset/CA_2021_Kamloops
+    MODE: prg # test # prg
+    DIR: /home/p/u/puzhao/wildfire-s1s2-dataset-ak-tiles
+    # PRG_DIR: /home/p/u/puzhao/wildfire-progression-dataset/CA_2021_Kamloops
+    PRG_DIR: /home/p/u/puzhao/wildfire-progression-dataset/US_2021_Dixie
 
 EXP:
     NOTE: debug
-    NAME: ${DATA.NAME}_${MODEL.ARCH}_${DATA.SATELLITES}_${EXP.NOTE}
-    OUTPUT: ./outputs/run_${EXP.NAME}_${now:%Y%m%dT%H%M%S} #${defaults.0.data}
+    FOLDER: MTBS_Burn_Severity
+    NAME: ${DATA.TRAIN_MASK}_${MODEL.ARCH}_${DATA.SATELLITES}_${EXP.NOTE}
+    OUTPUT: /home/p/u/puzhao/run_results/${EXP.FOLDER}/run_${EXP.NAME}_${now:%Y%m%dT%H%M%S} #${defaults.0.data}
 
 hydra:
     run:

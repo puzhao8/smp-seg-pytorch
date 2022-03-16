@@ -33,112 +33,36 @@ PYTHONUNBUFFERED=1;
 # echo "Running simulation $CFG"
 # echo "---------------------------------------------------------------------------------------------------------------"
 
-# python3 test.py
-
-# python3 main_s1s2_unet.py \
-#             --config-name=unet.yaml \
-#             RAND.SEED=0 \
-#             RAND.DETERMIN=False \
-#             DATA.TRAIN_MASK=poly \
-#             DATA.SATELLITES=[$CFG] \
-#             DATA.PREPOST=['pre','post'] \
-#             DATA.STACKING=True \
-#             DATA.INPUT_BANDS.S2=['B4','B8','B12'] \
-#             MODEL.ARCH=UNet \
-#             MODEL.USE_DECONV=False \
-#             MODEL.WEIGHT_DECAY=0.01 \
-#             MODEL.NUM_CLASS=1 \
-#             MODEL.LOSS_TYPE=DiceLoss \
-#             MODEL.LR_SCHEDULER=cosine \
-#             MODEL.ACTIVATION=sigmoid \
-#             MODEL.BATCH_SIZE=16 \
-#             MODEL.MAX_EPOCH=100 \
-#             EXP.NOTE=EF-no-deconv
-
-
-
-##########################################################
-## ---- U-Net multiple runs with different seeds ----
-##########################################################
-# sbatch --array=0-4 run_on_geoinfo/run_unet.sh
-CFG=$SLURM_ARRAY_TASK_ID
-echo "Running simulation $CFG"
-echo "---------------------------------------------------------------------------------------------------------------"
-
-for SAT in S1,S2 S1,ALOS S1,ALOS
-do
-    echo "Running simulation $SAT"
-    echo "---------------------------------------------------------------------------------------------------------------"
-
-    python3 main_s1s2_unet.py \
-                --config-name=unet.yaml \
-                RAND.SEED=$CFG \
-                RAND.DETERMIN=False \
-                DATA.TRAIN_MASK=poly \
-                DATA.SATELLITES=[$SAT] \
-                DATA.STACKING=True \
-                MODEL.ARCH=UNet \
-                MODEL.ENCODER=resnet18 \
-                MODEL.ENCODER_WEIGHTS=imagenet \
-                MODEL.USE_DECONV=False \
-                MODEL.WEIGHT_DECAY=0.01 \
-                MODEL.LR_SCHEDULER=cosine \
-                MODEL.BATCH_SIZE=16 \
-                MODEL.NUM_CLASS=2 \
-                MODEL.LOSS_TYPE=CrossEntropyLoss \
-                MODEL.ACTIVATION=softmax2d \
-                MODEL.MAX_EPOCH=100 \
-                EXP.FOLDER=Canada_RSE_2022 \
-                EXP.NOTE=CE
-
-done
-
-# # sbatch --array=0-4 run_on_geoinfo/run_unet.sh
-# python3 main_s1s2_unet.py \
-#             --config-name=unet.yaml \
-#             RAND.SEED=$CFG \
-#             RAND.DETERMIN=False \
-#             DATA.TRAIN_MASK=poly \
-#             DATA.SATELLITES=['S1'] \
-#             DATA.STACKING=True \
-#             MODEL.ARCH=UNet \
-#             MODEL.ENCODER=resnet18 \
-#             MODEL.ENCODER_WEIGHTS=imagenet \
-#             MODEL.USE_DECONV=False \
-#             MODEL.WEIGHT_DECAY=0.01 \
-#             MODEL.LR_SCHEDULER=cosine \
-#             MODEL.NUM_CLASS=1 \
-#             MODEL.LOSS_TYPE=DiceLoss \
-#             MODEL.ACTIVATION=sigmoid \
-#             MODEL.BATCH_SIZE=16 \
-#             MODEL.MAX_EPOCH=100 \
-#             EXP.FOLDER=Canada_RSE_2022 \
-#             EXP.NOTE=EF-dice
 
 ##########################################################
 ## ---- U-Net MTBS ----
 ##########################################################
-# sbatch run_on_geoinfo/run_unet.sh
-# python3 main_s1s2_unet_mtbs.py \
-#             --config-name=mtbs.yaml \
-#             RAND.SEED=0 \
-#             RAND.DETERMIN=False \
-#             DATA.AUGMENT=True \
-#             DATA.TRAIN_MASK=mtbs \
-#             DATA.TEST_MASK=mtbs \
-#             DATA.SATELLITES=['S2'] \
-#             DATA.PREPOST=['pre','post'] \
-#             DATA.STACKING=True \
-#             DATA.INPUT_BANDS.S2=['B4','B8','B12'] \
-#             MODEL.ARCH=UNet_dualHeads \
-#             MODEL.CLASS_WEIGHTS=[0.1,0.2,0.3,0.4] \
-#             MODEL.USE_DECONV=False \
-#             MODEL.WEIGHT_DECAY=0.01 \
-#             MODEL.LR_SCHEDULER=cosine \
-#             MODEL.BATCH_SIZE=32 \
-#             MODEL.MAX_EPOCH=100 \
-#             MODEL.STEP_WISE_LOG=False \
-#             EXP.NOTE=mtbs-mse-x10
+
+# sbatch --array=0-4 run_on_geoinfo/run_mtbs.sh
+CFG=$SLURM_ARRAY_TASK_ID
+echo "Running simulation $CFG"
+echo "---------------------------------------------------------------------------------------------------------------"
+
+python3 main_s1s2_unet_mtbs.py \
+            --config-name=mtbs.yaml \
+            RAND.SEED=0 \
+            RAND.DETERMIN=False \
+            DATA.AUGMENT=True \
+            DATA.TRAIN_MASK=mtbs \
+            DATA.TEST_MASK=mtbs \
+            DATA.SATELLITES=['S2'] \
+            DATA.PREPOST=['pre','post'] \
+            DATA.STACKING=True \
+            DATA.INPUT_BANDS.S2=['B4','B8','B12'] \
+            MODEL.ARCH=UNet_dualHeads \
+            MODEL.CLASS_WEIGHTS=[0.5,0.5,0,0] \
+            MODEL.USE_DECONV=False \
+            MODEL.WEIGHT_DECAY=0.01 \
+            MODEL.LR_SCHEDULER=cosine \
+            MODEL.BATCH_SIZE=32 \
+            MODEL.MAX_EPOCH=5 \
+            MODEL.STEP_WISE_LOG=False \
+            EXP.NOTE=debug
 
 ##########################################################
 ## ---- U-Net MTBS 2 Classes ----

@@ -1,6 +1,7 @@
 from multiprocessing.spawn import prepare
 from ntpath import join
 import os, glob
+from pickletools import int4
 import random
 from cv2 import _InputArray_OPENGL_BUFFER
 import matplotlib.pyplot as plt
@@ -242,7 +243,7 @@ def apply_model_on_event(model, test_id, output_dir, cfg):
     if 'prg' in cfg.EVAL.MODE:
         data_dir = Path(cfg.EVAL.PRG_DIR)
     else:
-        data_dir = Path(cfg.DATA.DIR) / "test_images"
+        data_dir = Path(cfg.EVAL.DIR) / "test_images"
 
     # orbKeyLen = len(test_id.split("_")[-1]) + 1 
     # event = test_id[:-orbKeyLen]
@@ -259,24 +260,8 @@ def apply_model_on_event(model, test_id, output_dir, cfg):
     # mtbs_palette = [[0,100/255,0], [127/255,1,212/255], [1,1,0], [1,0,0], [127/255,1,0], [1,1,1]]
 
     # plt.imsave(output_dir / f"{test_id}_pred.png", predMask, cmap='gray', vmin=0, vmax=3)
-    tiff.imsave(output_dir / f"{test_id}_pred.tif", predMask)
+    tiff.imsave(output_dir / f"{test_id}_pred.tif", predMask.astype(np.int8))
     gen_burn_severity_map(0, predMask, save_url=output_dir / f"{test_id}_pred.png")
-
-    # # read and save true labels
-    # ref_url = data_dir / "mask" / cfg.DATA.TEST_MASK / f"{event}.tif"
-    # if os.path.isfile(ref_url):
-    #     trueLabel = tiff.imread(ref_url)
-        
-    #     # _, _, trueLabel = geotiff.read(ref_url)
-    #     # geotiff.save(output_dir / f"{test_id}_pred.tif", predMask[np.newaxis,]) 
-
-    #     trueLabel = trueLabel.squeeze()
-
-    #     # tiff.imsave(output_dir / f"{test_id}_gts.png", trueLabel)
-    #     # plt.imsave(output_dir / f"{test_id}_gts.png", trueLabel, cmap='gray', vmin=0, vmax=3)
-        
-    #     # gen_errMap(trueLabel, predMask, save_url=output_dir / f"{test_id}.png")
-    #     gen_burn_severity_map(trueLabel, predMask, save_url=output_dir / f"{test_id}_pred.png")
 
 
 def evaluate_model(cfg, model_url, output_dir):
@@ -284,7 +269,8 @@ def evaluate_model(cfg, model_url, output_dir):
     if 'prg' in cfg.EVAL.MODE:
         test_id_list = os.listdir(Path(cfg.EVAL.PRG_DIR) / 'S2' / 'post')
     else:
-        test_id_list = os.listdir(Path(cfg.DATA.DIR) / "test_images" / "S2" / "post")
+        # test_id_list = os.listdir(Path(cfg.DATA.DIR) / "test_images" / "S2" / "post")
+        test_id_list = os.listdir(Path(cfg.EVAL.DIR) / "test_images" / "S2" / "post")
 
     test_id_list = [test_id[:-4] for test_id in test_id_list]
     print(test_id_list[0])
@@ -347,7 +333,7 @@ def run_app(cfg : DictConfig) -> None:
     pprint(cfg_flat)
 
     ''' specify model directory '''
-    run_dir = Path("/home/p/u/puzhao/smp-seg-pytorch/outputs/run_s1s2_UNet_['S2']_mtbs_20220227T233525_work")
+    run_dir = Path("/home/p/u/puzhao/run_results/outputs/run_s1s2_UNet_['S2']_mtbs_20220227T233525_work")
     model_url = run_dir / "model.pth"
     output_dir = run_dir / "errMap"
     evaluate_model(cfg, model_url, Path("/home/p/u/puzhao/wildfire-progression-dataset/CA_2021_Kamloops/outputs/burn_severity"))

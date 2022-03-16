@@ -3,6 +3,7 @@
 import io
 import os, glob
 import numpy as np
+from prettyprinter import pprint
 import torch
 from pathlib import Path
 from imageio import imread, imsave
@@ -119,7 +120,7 @@ def multiclass_IoU_F1(pred_dir, gts_dir, NUM_CLASS=4, phase='test_images'):
 
     # initialize a dict to store results
     results = {}
-    for cls in range(0, NUM_CLASS):
+    for cls in range(0, max(2, NUM_CLASS)):
         results[f'class{cls}'] = []
     
     # loop over all test events
@@ -131,7 +132,7 @@ def multiclass_IoU_F1(pred_dir, gts_dir, NUM_CLASS=4, phase='test_images'):
         pr = tiff.imread(pred_dir / f"{event}_pred.tif")
         
         # compute IoU and F1 for each class per event
-        for cls in range(0, NUM_CLASS):
+        for cls in range(0, max(2, NUM_CLASS)):
             cls_gt = (gt==cls).astype(float)
             cls_pr = (pr==cls).astype(float)
 
@@ -147,6 +148,7 @@ def multiclass_IoU_F1(pred_dir, gts_dir, NUM_CLASS=4, phase='test_images'):
     class_IoUs = []
     class_F1s = []
     class_pixels = []
+    log_dict = {}
     for key in results.keys():
         arr = np.array(results[key]) # iou, f1, intersection, union, pixel number
 
@@ -166,15 +168,15 @@ def multiclass_IoU_F1(pred_dir, gts_dir, NUM_CLASS=4, phase='test_images'):
         class_pixels.append(total_pixels)
 
         # log results into wandb for each class
-        wandb.log({'final': {
+        log_dict.update({
                 f'{phase}.IoU_{key}': IoU, 
-                f'{phase}.F1_{key}': F1}
+                f'{phase}.F1_{key}': F1
             })
 
     if NUM_CLASS == 2:
-        wandb.log({'final': {
+        log_dict.update({
                 f'{phase}.IoU': class_IoUs[-1], 
-                f'{phase}.F1': class_F1s[-1]}
+                f'{phase}.F1': class_F1s[-1]
             })
 
     mIoU = np.array(class_IoUs).mean()
@@ -187,11 +189,13 @@ def multiclass_IoU_F1(pred_dir, gts_dir, NUM_CLASS=4, phase='test_images'):
     print(f"class frequency: {np.array(class_frequency).round(4)}")
     print(f"mIoU: {mIoU:.4f}, FwIoU: {FwIoU:.4f}")
 
-    wandb.log({'final': {
+    log_dict.update({
             f'{phase}.mIoU': mIoU,
             f'{phase}.FwIoU': FwIoU
-        }
-    })
+        })
+
+    # pprint(log_dict)
+    wandb.log({'final': log_dict})
 
 
 if __name__ == "__main__":
@@ -205,14 +209,14 @@ if __name__ == "__main__":
     # compute_IoU_F1(phase, result_dir, dataset_dir)
 
 
-    # gts_dir = Path("/home/p/u/puzhao/wildfire-s1s2-dataset-us-tiles") / "test_images/mask/mtbs"
-    # pred_dir = Path("/home/p/u/puzhao/smp-seg-pytorch/outputs/run_s1s2_UNet_['S2']_mtbs_20220227T233525_work/errMap")
-    # multiclass_IoU_F1(pred_dir, gts_dir, NUM_CLASS=3)
+    gts_dir = Path("/home/p/u/puzhao/wildfire-s1s2-dataset-us-tiles") / "test_images/mask/mtbs"
+    pred_dir = Path("/home/p/u/puzhao/run_results/outputs/run_s1s2_UNet_['S2']_mtbs_20220227T233525_work/errMap")
+    multiclass_IoU_F1(pred_dir, gts_dir, NUM_CLASS=3)
 
 
-    gts_dir = Path("/home/p/u/puzhao/wildfire-s1s2-dataset-ca-tiles") / "test_images/mask/poly"
-    pred_dir = Path("/home/p/u/puzhao/smp-seg-pytorch/Canada_RSE_2022/run_poly_UNet_['S1']_EF_20220308T000802/errMap")
-    multiclass_IoU_F1(pred_dir, gts_dir, NUM_CLASS=2)
+    # gts_dir = Path("/home/p/u/puzhao/wildfire-s1s2-dataset-ca-tiles") / "test_images/mask/poly"
+    # pred_dir = Path("/home/p/u/puzhao/run_results/Canada_RSE_2022/run_poly_UNet_['S1']_EF_20220308T000802/errMap")
+    # multiclass_IoU_F1(pred_dir, gts_dir, NUM_CLASS=2)
 
 
     wandb.finish()

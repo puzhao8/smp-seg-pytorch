@@ -235,8 +235,8 @@ class SegModel(object):
             valid_logs = self.valid_logs
             
             # do something (save model, change lr, etc.)
-            if valid_logs['class1_iou_score'] > max_score:
-                max_score = valid_logs['class1_iou_score']
+            if valid_logs['iou_score_class1'] > max_score:
+                max_score = valid_logs['iou_score_class1']
 
                 if (1 == epoch) or (0 == (epoch % self.cfg.MODEL.SAVE_INTERVAL)):
                     torch.save(self.model, self.MODEL_URL)
@@ -304,12 +304,13 @@ class SegModel(object):
                 if 'UNet_resnet' in self.cfg.MODEL.ARCH: 
                     input = input[0]
                     out = self.model.forward(input)
+
                 elif 'UNet_dualHeads' in self.cfg.MODEL.ARCH:
                     reg_out, out = self.model.forward(input) #NCHW
                     reg_act = (self.cfg.MODEL.NUM_CLASS - 1) * torch.sigmoid(reg_out)
 
                     # add regression loss
-                    y_mask = torch.tensor((y>=1)).float()
+                    y_mask = (y>=1).type(torch.FloatTensor).to(self.DEVICE)
                     loss_reg = 10 * nn.MSELoss()(y_mask * reg_act, y_mask * y)
 
                 else:
@@ -320,7 +321,7 @@ class SegModel(object):
                 ''' compute loss '''
                 # segmentation loss
                 y = y.squeeze()
-                loss_seg = self.criterion(out, torch.tensor((y>=1)).long())
+                loss_seg = self.criterion(out, (y>=1).type(torch.LongTensor).to(self.DEVICE))
                 loss_ =  loss_seg + loss_reg
 
                 # combine burned area and burn severity maps
@@ -421,7 +422,7 @@ def run_app(cfg : DictConfig) -> None:
 
     # cfg.MODEL.DEBUG = False
     # if not cfg.MODEL.DEBUG:
-    wandb.init(config=cfg_flat, project='MTBS', entity=cfg.PROJECT.ENTITY, name=cfg.EXP.NAME)
+    wandb.init(config=cfg_flat, project=cfg.PROJECT.NAME, entity=cfg.PROJECT.ENTITY, name=cfg.EXP.NAME)
     pprint(cfg_flat)
 
     ''' train '''
@@ -429,15 +430,17 @@ def run_app(cfg : DictConfig) -> None:
     mySegModel = SegModel(cfg)
     mySegModel.run()
 
-    # ''' inference '''
-    # from s1s2_evaluator import evaluate_model
-    # evaluate_model(cfg, mySegModel.MODEL_URL, mySegModel.RUN_DIR / "errMap")
+    ''' inference '''
+    from s1s2_evaluator_mtbs import evaluate_model
+    evaluate_model(cfg, mySegModel.MODEL_URL, mySegModel.RUN_DIR / "errMap")
 
-    # ''' compute IoU and F1 for all events '''
-    # from utils.iou4all import compute_IoU_F1
-    # compute_IoU_F1(phase="test_images", 
-    #                 result_dir=mySegModel.RUN_DIR / "errMap", 
-    #                 dataset_dir=cfg.DATA.DIR)
+    ''' compute IoU and F1 for all events '''
+    from utils.iou4all import multiclass_IoU_F1
+    multiclass_IoU_F1(
+            pred_dir=mySegModel.RUN_DIR / "errMap", 
+            gts_dir=cfg.DATA.DIR / "test_images/mask/mtbs",
+            NUM_CLASS=cfg.MODEL.NUM_CLASSES
+        )
     
     # if not cfg.MODEL.DEBUG:
     wandb.finish()

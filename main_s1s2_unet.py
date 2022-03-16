@@ -165,15 +165,15 @@ class SegModel(object):
         valid_loader = DataLoader(val_set, batch_size=self.cfg.MODEL.BATCH_SIZE, shuffle=True, num_workers=4, generator=generator)
         test_loader = DataLoader(valid_dataset, batch_size=self.cfg.MODEL.BATCH_SIZE, shuffle=True, num_workers=4, generator=generator)
 
-# means = []
-# stds = []
-# for img in list(iter(train_loader)):
-#     print(img.shape)
-#     means.append(torch.mean(img))
-#     stds.append(torch.std(img))
+        # means = []
+        # stds = []
+        # for img in list(iter(train_loader)):
+        #     print(img.shape)
+        #     means.append(torch.mean(img))
+        #     stds.append(torch.std(img))
 
-# mean = torch.mean(torch.tensor(means))
-# std = torch.mean(torch.tensor(stds))
+        # mean = torch.mean(torch.tensor(means))
+        # std = torch.mean(torch.tensor(stds))
         
         dataloaders = { 
                         'train': train_loader, \
@@ -243,11 +243,34 @@ class SegModel(object):
                 if (1 == epoch) or (0 == (epoch % self.cfg.MODEL.SAVE_INTERVAL)):
                     torch.save(self.model, self.MODEL_URL)
                     # torch.save(self.model.state_dict(), self.MODEL_URL)
-                    print('Model saved!')
+                    print(f'Model saved at epoch {epoch}!')
+
+                    best_epoch = epoch
 
             # if epoch % 50 == 0:
             #     self.optimizer.param_groups[0]['lr'] = 0.1 * self.optimizer.param_groups[0]['lr']
-                        
+
+        ''' final evaluation with best model after training finished '''
+        # load best model
+        self.model = torch.load(self.MODEL_URL, map_location=torch.device('cpu'))
+        self.eval_best_model(best_epoch)
+
+    def eval_best_model(self, best_epoch): 
+        ''' eval the best model '''
+        self.model.to(self.DEVICE)
+
+        log_dict = {}
+        for phase in ['train', 'valid', 'test']:
+            if phase == 'train':
+                self.model.train()
+            else:
+                self.model.eval()
+
+            logs = self.step(phase) 
+            log_dict.update({phase: logs})
+            
+        log_dict.update({'epoch': best_epoch})
+        wandb.log({'best': log_dict})                    
         
     def train_one_epoch(self, epoch):
     
@@ -294,18 +317,20 @@ class SegModel(object):
                     input = input[0]
                     out = self.model.forward(input)
                 else:
-                    out = self.model.forward(input)[-1]
+                    out = self.model.forward(input)[-1] #BCHW
 
                 # if 'softmax' in self.cfg.MODEL.ACTIVATION:
                 y_gts = torch.argmax(y, dim=1) # BHW [0, 1, 2, NUM_CLASS-1]
-                y_pred = torch.argmax(self.activation(out), dim=1) # BHW
-                
+                    
                 ''' compute loss '''
                 # loss_ = self.criterion(out, y) # include activation
-                if 'DiceLoss' == self.cfg.MODEL.LOSS_TYPE:
-                    loss_ = self.criterion(y_pred, y_gts) # For Dice Loss
+                if 'DiceLoss' == self.cfg.MODEL.LOSS_TYPE: # For Dice Loss when NUM_CLASS=1
+                    out = out.squeeze()
+                    loss_ = self.criterion(out, y_gts) 
+                    y_pred = (self.activation(out) >= 0.5).type(torch.FloatTensor)
                 else:
                     loss_ = self.criterion(out, y_gts) # Cross Entropy Loss
+                    y_pred = torch.argmax(self.activation(out), dim=1) # BHW
 
                 ''' Back Propergation (BP) '''
                 if phase == 'train':

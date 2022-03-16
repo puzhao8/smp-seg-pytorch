@@ -4,7 +4,7 @@
 #SBATCH --mem 36GB
 #SBATCH --cpus-per-task 8
 #SBATCH -t 7-00:00:00
-#SBATCH --job-name dual-unet
+#SBATCH --job-name train
 #SBATCH --output /home/p/u/puzhao/run_logs/%x-%A_%a.out
 
 echo "start"
@@ -39,35 +39,104 @@ PYTHONUNBUFFERED=1;
 ##########################################################
 # sbatch --array=0-2 run_on_geoinfo/run_siamunet.sh
 
-# # Choose different sensors
-SAT=('S1' 'S2' 'ALOS')
-CFG=${SAT[$SLURM_ARRAY_TASK_ID]}
-echo "Running simulation $CFG"
-# echo "python3 main_s1s2_unet.py model.batch_size=32"
+
+##########################################################
+## ---- Single Runs with different seeds ----
+##########################################################
+
+# # # Choose different sensors
+# SAT=('S1' 'S2' 'ALOS')
+# CFG=${SAT[$SLURM_ARRAY_TASK_ID]}
+# echo "Running simulation $CFG"
+# # echo "python3 main_s1s2_unet.py model.batch_size=32"
+# echo "---------------------------------------------------------------------------------------------------------------"
+
+# python3 main_s1s2_unet.py \
+#             --config-name=siam_unet.yaml \
+#             RAND.SEED=0 \
+#             RAND.DETERMIN=False \
+#             DATA.TRAIN_MASK=poly \
+#             DATA.SATELLITES=[$CFG] \
+#             DATA.STACKING=False \
+#             DATA.INPUT_BANDS.S1=['ND','VH','VV'] \
+#             DATA.INPUT_BANDS.S2=['B4','B8','B12'] \
+#             MODEL.ARCH='DualUnet_LF' \
+#             MODEL.SHARE_ENCODER=True \
+#             MODEL.ENCODER=resnet18 \
+#             MODEL.ENCODER_WEIGHTS=imagenet \
+#             MODEL.USE_DECONV=False \
+#             MODEL.WEIGHT_DECAY=0.01 \
+#             MODEL.NUM_CLASS=1 \
+#             MODEL.LOSS_TYPE=DiceLoss \
+#             MODEL.LR_SCHEDULER=cosine \
+#             MODEL.ACTIVATION=sigmoid \
+#             MODEL.BATCH_SIZE=16 \
+#             MODEL.MAX_EPOCH=100 \
+#             EXP.NOTE=LF
+
+
+##########################################################
+## ---- Multiple Runs with different seeds ----
+##########################################################
+
+# sbatch --array=0-4 run_on_geoinfo/run_siamunet.sh
+CFG=$SLURM_ARRAY_TASK_ID
+echo "Running simulation SEED $CFG"
 echo "---------------------------------------------------------------------------------------------------------------"
 
-python3 main_s1s2_unet.py \
-            --config-name=siam_unet.yaml \
-            RAND.SEED=0 \
-            RAND.DETERMIN=False \
-            DATA.TRAIN_MASK=poly \
-            DATA.SATELLITES=[$CFG] \
-            DATA.STACKING=False \
-            DATA.INPUT_BANDS.S1=['ND','VH','VV'] \
-            DATA.INPUT_BANDS.S2=['B4','B8','B12'] \
-            MODEL.ARCH='DualUnet_LF' \
-            MODEL.SHARE_ENCODER=True \
-            MODEL.ENCODER=resnet18 \
-            MODEL.ENCODER_WEIGHTS=imagenet \
-            MODEL.USE_DECONV=False \
-            MODEL.WEIGHT_DECAY=0.01 \
-            MODEL.NUM_CLASS=1 \
-            MODEL.LOSS_TYPE=DiceLoss \
-            MODEL.LR_SCHEDULER=cosine \
-            MODEL.ACTIVATION=sigmoid \
-            MODEL.BATCH_SIZE=16 \
-            MODEL.MAX_EPOCH=100 \
-            EXP.NOTE=LF
+for ARCH in SiamUnet_conc SiamUnet_diff DualUnet_LF
+do
+    echo "Running simulation ARCH $ARCH"
+    echo "---------------------------------------------------------------------------------------------------------------"
+
+    python3 main_s1s2_unet.py \
+                --config-name=siam_unet.yaml \
+                RAND.SEED=$CFG \
+                RAND.DETERMIN=False \
+                DATA.TRAIN_MASK=poly \
+                DATA.SATELLITES=['S1'] \
+                DATA.STACKING=False \
+                DATA.INPUT_BANDS.S1=['ND','VH','VV'] \
+                DATA.INPUT_BANDS.S2=['B4','B8','B12'] \
+                MODEL.ARCH=$ARCH \
+                MODEL.SHARE_ENCODER=True \
+                MODEL.USE_DECONV=False \
+                MODEL.WEIGHT_DECAY=0.01 \
+                MODEL.LR_SCHEDULER=cosine \
+                MODEL.ACTIVATION=softmax2d \
+                MODEL.BATCH_SIZE=16 \
+                MODEL.MAX_EPOCH=3 \
+                EXP.NOTE=WSt-test
+done
+
+# # sbatch --array=0-4 run_on_geoinfo/run_siamunet.sh
+# CFG=$SLURM_ARRAY_TASK_ID
+# echo "Running simulation $CFG"
+# echo "---------------------------------------------------------------------------------------------------------------"
+
+# python3 main_s1s2_unet.py \
+#             --config-name=siam_unet.yaml \
+#             RAND.SEED=$CFG \
+#             RAND.DETERMIN=False \
+#             DATA.TRAIN_MASK=poly \
+#             DATA.SATELLITES=['S1','S2'] \
+#             DATA.STACKING=True \
+#             DATA.INPUT_BANDS.S1=['ND','VH','VV'] \
+#             DATA.INPUT_BANDS.S2=['B4','B8','B12'] \
+#             MODEL.ARCH='SiamUnet_conc' \
+#             MODEL.SHARE_ENCODER=False \
+#             MODEL.ENCODER=resnet18 \
+#             MODEL.ENCODER_WEIGHTS=imagenet \
+#             MODEL.USE_DECONV=False \
+#             MODEL.WEIGHT_DECAY=0.01 \
+#             MODEL.NUM_CLASS=2 \
+#             MODEL.LOSS_TYPE=CrossEntropyLoss \
+#             MODEL.CLASS_WEIGHTS=[0.5,0.5] \
+#             MODEL.ACTIVATION=softmax2d \
+#             MODEL.LR_SCHEDULER=cosine \
+#             MODEL.BATCH_SIZE=16 \
+#             MODEL.MAX_EPOCH=100 \
+#             EXP.NOTE=WSf_CE
 
 ##########################################################
 ## ---- Different Architecture for Multi-Sensor Data ----

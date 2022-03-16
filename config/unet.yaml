@@ -41,18 +41,20 @@ MODEL:
     DEBUG: True
 
     ARCH: UNet #UNet_resnet18 #FuseUNet, UNet
-    USE_DECONV: True
+    USE_DECONV: False
     TOPO: [16, 32, 64, 128]
+    
+    CLASS_NAMES: ['unburn', 'burned']
+    CLASS_WEIGHTS: [0.5, 0.5]
 
     # LOSS_TYPE: DiceLoss # DiceLoss
-    # NUM_CLASSES: 1
+    # NUM_CLASS: 1
+    # CLASS_NAMES: ['unburn', 'burned']
     # ACTIVATION: sigmoid #sigmoid
 
     LOSS_TYPE: CrossEntropyLoss # DiceLoss
     NUM_CLASS: 2
-    CLASS_NAMES: ['unburn', 'burned']
-    CLASS_WEIGHTS: [0.5, 0.5]
-    ACTIVATION: softmax #sigmoid
+    ACTIVATION: softmax2d #sigmoid
 
     ENCODER: resnet18 # 'mobilenet_v2'
     ENCODER_DEPTH: 4
@@ -71,7 +73,7 @@ MODEL:
         WARMUP: 10
     
     MAX_SCORE: 0.1 # If IoU > max_score, save model
-    SAVE_INTERVAL: 5 # save model frequency
+    SAVE_INTERVAL: 1 # save model frequency
     STEP_WISE_LOG: False # log metrics every step/update
     VERBOSE: True
 
@@ -82,7 +84,7 @@ EXP:
     NOTE: debug
     FOLDER: Canada_RSE_2022
     NAME: ${DATA.TRAIN_MASK}_${MODEL.ARCH}_${DATA.SATELLITES}_${EXP.NOTE}
-    OUTPUT: /home/p/u/puzhao/run_results/${EXP.FOLDER}/run_${EXP.NAME}_${now:%Y%m%dT%H%M%S} #${defaults.0.data}
+    OUTPUT: /home/p/u/puzhao/run_results/${EXP.FOLDER}/run_${EXP.NAME}_seed${RAND.SEED}_${now:%Y%m%dT%H%M%S} #${defaults.0.data}
 
 hydra:
     run:
